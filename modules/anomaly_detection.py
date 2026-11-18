@@ -21,7 +21,6 @@ def _model_components() -> tuple[Any, ...]:
     try:
         import joblib
         import numpy as np
-        import pandas as pd
         from sklearn.ensemble import IsolationForest
         from sklearn.pipeline import Pipeline
         from sklearn.preprocessing import StandardScaler
@@ -29,14 +28,14 @@ def _model_components() -> tuple[Any, ...]:
         raise ScientificDependencyError(
             "AI anomaly detection needs NumPy, Pandas, Joblib, and Scikit-learn."
         ) from exc
-    return joblib, np, pd, IsolationForest, Pipeline, StandardScaler
+    return joblib, np, IsolationForest, Pipeline, StandardScaler
 
 
 def create_pipeline(
     contamination: float | str = "auto", random_state: int = 42
 ) -> Pipeline:
     """Create the scaled Isolation Forest pipeline."""
-    _, _, _, IsolationForest, Pipeline, StandardScaler = _model_components()
+    _, _, IsolationForest, Pipeline, StandardScaler = _model_components()
     return Pipeline(
         steps=[
             ("scaler", StandardScaler()),
@@ -68,7 +67,7 @@ def load_model(model_path: str | Path = DEFAULT_MODEL_PATH) -> Pipeline:
         raise FileNotFoundError(
             f"Model not found at {path}. Train a model before making predictions."
         )
-    joblib, _, _, _, Pipeline, _ = _model_components()
+    joblib, _, _, Pipeline, _ = _model_components()
     model: Any = joblib.load(path)
     if not isinstance(model, Pipeline) or "isolation_forest" not in model.named_steps:
         raise ValueError(f"File does not contain a KAIROS-AI Isolation Forest: {path}")
@@ -77,7 +76,7 @@ def load_model(model_path: str | Path = DEFAULT_MODEL_PATH) -> Pipeline:
 
 def _ordered_feature_vector(features: dict[str, float]) -> Any:
     """Validate and order a feature mapping according to the training schema."""
-    _, np, pd, *_ = _model_components()
+    _, np, *_ = _model_components()
     missing = [name for name in FEATURE_NAMES if name not in features]
     if missing:
         raise ValueError(f"Missing required audio features: {', '.join(missing)}")
@@ -87,7 +86,7 @@ def _ordered_feature_vector(features: dict[str, float]) -> Any:
         raise ValueError("Audio features must all be numeric") from exc
     if not np.isfinite(vector).all():
         raise ValueError("Audio features must all be finite")
-    return pd.DataFrame([vector], columns=FEATURE_NAMES)
+    return vector.reshape(1, -1)
 
 
 def predict_from_features(
