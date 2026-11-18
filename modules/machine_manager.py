@@ -31,4 +31,3 @@ def machine_snapshot(history: list[dict]) -> List[Dict[str, object]]:
 
 def utc_timestamp() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-

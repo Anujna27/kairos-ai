@@ -58,4 +58,3 @@ def record_audio(duration: float = 5.0, sample_rate: int = 16_000) -> Tuple[list
     except Exception as exc:
         raise RuntimeError("Microphone recording failed. Check that a default input device is connected and Windows has microphone permission enabled.") from exc
     return preprocess_audio(recording[:, 0], sample_rate)
-
