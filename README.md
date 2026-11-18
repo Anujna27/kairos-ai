@@ -1,5 +1,3 @@
-heelooo
-
 # KAIROS-AI
 
 KAIROS-AI is a Streamlit prototype for acoustic machine-health monitoring. It
@@ -9,11 +7,11 @@ No live IoT feed, fault diagnosis, or performance claims are included.
 
 ## Installation and dashboard
 
-```bash
+```powershell
 python -m venv .venv
-source .venv/bin/activate
+.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
 Upload WAV/FLAC (and MP3 where the local SoundFile installation supports it),

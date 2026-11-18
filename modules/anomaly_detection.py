@@ -71,7 +71,7 @@ def load_model(model_path: str | Path = DEFAULT_MODEL_PATH) -> Pipeline:
     joblib, _, _, _, Pipeline, _ = _model_components()
     model: Any = joblib.load(path)
     if not isinstance(model, Pipeline) or "isolation_forest" not in model.named_steps:
-        raise ValueError(f"File does not contain an EchoSense Isolation Forest: {path}")
+        raise ValueError(f"File does not contain a KAIROS-AI Isolation Forest: {path}")
     return model
 
 

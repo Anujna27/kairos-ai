@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 from typing import Any, Final
 
+from .signal_processing import ScientificDependencyError
+
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE: Final[int] = 22_050
@@ -39,11 +41,10 @@ def _scientific_modules() -> tuple[Any, Any]:
     try:
         import librosa
         import numpy as np
-    except ImportError as exc:
-        from .signal_processing import ScientificDependencyError
-
+    except (ImportError, OSError) as exc:
         raise ScientificDependencyError(
-            "Audio feature extraction needs NumPy and Librosa."
+            "Audio feature extraction needs NumPy and Librosa. Windows Application Control "
+            "is blocking a compiled NumPy component, so this feature is temporarily unavailable."
         ) from exc
     return librosa, np
 
@@ -92,6 +93,11 @@ def _summarize_features(
                 y=audio, frame_length=N_FFT, hop_length=HOP_LENGTH
             )[0],
         }
+    except (ImportError, OSError) as exc:
+        raise ScientificDependencyError(
+            "Audio feature extraction is temporarily unavailable because Windows Application "
+            "Control blocked a compiled NumPy/Numba component."
+        ) from exc
     except Exception as exc:
         logger.exception("Feature extraction failed for %s", path_label)
         raise FeatureExtractionError(

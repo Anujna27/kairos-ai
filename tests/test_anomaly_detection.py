@@ -8,26 +8,33 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import numpy as np
-import pandas as pd
+try:
+    import numpy as np
+    import pandas as pd
 
-from modules.anomaly_detection import (
-    create_pipeline,
-    load_model,
-    predict_from_features,
-    save_model,
-)
-from modules.feature_extraction import (
-    FEATURE_NAMES,
-    MIN_AUDIO_SAMPLES,
-    FeatureExtractionError,
-    extract_features,
-    extract_features_from_audio,
-)
-from modules.evaluation import evaluate_model
-from modules.train import train_model
+    from modules.anomaly_detection import (
+        create_pipeline,
+        load_model,
+        predict_from_features,
+        save_model,
+    )
+    from modules.feature_extraction import (
+        FEATURE_NAMES,
+        MIN_AUDIO_SAMPLES,
+        FeatureExtractionError,
+        extract_features,
+        extract_features_from_audio,
+    )
+    from modules.evaluation import evaluate_model
+    from modules.train import train_model
+    SCIENTIFIC_DEPENDENCIES_AVAILABLE = True
+    SCIENTIFIC_DEPENDENCY_ERROR = ""
+except (ImportError, OSError) as exc:
+    SCIENTIFIC_DEPENDENCIES_AVAILABLE = False
+    SCIENTIFIC_DEPENDENCY_ERROR = str(exc)
 
 
+@unittest.skipUnless(SCIENTIFIC_DEPENDENCIES_AVAILABLE, SCIENTIFIC_DEPENDENCY_ERROR)
 class FeatureExtractionTests(unittest.TestCase):
     def test_features_have_stable_named_order(self) -> None:
         audio = np.zeros(MIN_AUDIO_SAMPLES, dtype=float)
@@ -56,6 +63,7 @@ class FeatureExtractionTests(unittest.TestCase):
         self.assertEqual(tuple(features), FEATURE_NAMES)
 
 
+@unittest.skipUnless(SCIENTIFIC_DEPENDENCIES_AVAILABLE, SCIENTIFIC_DEPENDENCY_ERROR)
 class AnomalyDetectionTests(unittest.TestCase):
     @staticmethod
     def _features(offset: float = 0.0) -> dict[str, float]:
@@ -103,6 +111,7 @@ class AnomalyDetectionTests(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(SCIENTIFIC_DEPENDENCIES_AVAILABLE, SCIENTIFIC_DEPENDENCY_ERROR)
 class TrainingTests(unittest.TestCase):
     def test_training_uses_normal_and_supports_healthy_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -146,6 +155,7 @@ class TrainingTests(unittest.TestCase):
             self.assertEqual(model.named_steps["scaler"].n_samples_seen_, 2)
 
 
+@unittest.skipUnless(SCIENTIFIC_DEPENDENCIES_AVAILABLE, SCIENTIFIC_DEPENDENCY_ERROR)
 class EvaluationTests(unittest.TestCase):
     def test_metrics_and_saved_outputs(self) -> None:
         predictions = {

@@ -1,1 +1,1 @@
-"""KAIROS-AI application and EchoSense anomaly-detection modules."""
+"""KAIROS-AI application and anomaly-detection modules."""
