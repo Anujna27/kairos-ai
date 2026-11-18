@@ -5,10 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-
-import numpy as np
-import pandas as pd
-from sklearn.pipeline import Pipeline
+from typing import Any, TYPE_CHECKING
 
 from .anomaly_detection import (
     DEFAULT_MODEL_PATH,
@@ -16,6 +13,10 @@ from .anomaly_detection import (
     save_model,
 )
 from .feature_extraction import FEATURE_NAMES, FeatureExtractionError, extract_features
+from .signal_processing import ScientificDependencyError
+
+if TYPE_CHECKING:
+    from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 WAV_SUFFIXES = {".wav"}
@@ -26,12 +27,20 @@ def train_model(
     model_path: str | Path = DEFAULT_MODEL_PATH,
     contamination: float | str = "auto",
     random_state: int = 42,
-) -> Pipeline:
+) -> Any:
     """Fit and save a model from healthy WAV files in the dataset.
 
     ``dataset/normal`` is the preferred location. ``dataset/healthy`` is
     accepted as a compatibility fallback for the existing dashboard.
     """
+    try:
+        import numpy as np
+    except (ImportError, OSError) as exc:
+        raise ScientificDependencyError(
+            "Model training is temporarily unavailable because Windows Application "
+            "Control blocked a compiled NumPy component."
+        ) from exc
+
     dataset = Path(dataset_path)
     normal_dir = dataset / "normal"
     healthy_dir = dataset / "healthy"
@@ -83,7 +92,7 @@ def train_model(
     if not np.isfinite(matrix).all():
         raise ValueError("Training features contain non-finite values.")
     model = create_pipeline(contamination=contamination, random_state=random_state)
-    model.fit(pd.DataFrame(matrix, columns=FEATURE_NAMES))
+    model.fit(matrix)
     save_model(model, model_path)
     logger.info("Trained using %d healthy recordings", len(feature_rows))
     return model

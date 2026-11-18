@@ -140,6 +140,11 @@ def extract_features_from_audio(
             )
     except FeatureExtractionError:
         raise
+    except (ImportError, OSError) as exc:
+        raise ScientificDependencyError(
+            "Audio preparation is temporarily unavailable because Windows Application "
+            "Control blocked a compiled NumPy/Numba component."
+        ) from exc
     except Exception as exc:
         raise FeatureExtractionError("Could not prepare in-memory audio.") from exc
     return _summarize_features(samples, "<in-memory audio>", librosa, np)
