@@ -22,8 +22,10 @@ from modules.feature_extraction import (
     MIN_AUDIO_SAMPLES,
     FeatureExtractionError,
     extract_features,
+    extract_features_from_audio,
 )
 from modules.evaluation import evaluate_model
+from modules.train import train_model
 
 
 class FeatureExtractionTests(unittest.TestCase):
@@ -32,10 +34,7 @@ class FeatureExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "mock.wav"
             path.touch()
-            with patch(
-                "modules.feature_extraction.librosa.load",
-                return_value=(audio, 22_050),
-            ):
+            with patch("modules.feature_extraction._read_audio", return_value=(audio, 22_050)):
                 features = extract_features(path)
 
         self.assertEqual(tuple(features), FEATURE_NAMES)
@@ -47,12 +46,14 @@ class FeatureExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "mock.wav"
             path.touch()
-            with patch(
-                "modules.feature_extraction.librosa.load",
-                return_value=(audio, 22_050),
-            ):
+            with patch("modules.feature_extraction._read_audio", return_value=(audio, 22_050)):
                 with self.assertRaises(FeatureExtractionError):
                     extract_features(path)
+
+    def test_in_memory_features_use_same_schema(self) -> None:
+        audio = np.zeros(MIN_AUDIO_SAMPLES, dtype=float)
+        features = extract_features_from_audio(audio, 22_050)
+        self.assertEqual(tuple(features), FEATURE_NAMES)
 
 
 class AnomalyDetectionTests(unittest.TestCase):
@@ -100,6 +101,49 @@ class AnomalyDetectionTests(unittest.TestCase):
             predict_from_features(self._features(0.25), model),
             predict_from_features(self._features(0.25), loaded),
         )
+
+
+class TrainingTests(unittest.TestCase):
+    def test_training_uses_normal_and_supports_healthy_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            normal_dir = root / "normal"
+            abnormal_dir = root / "abnormal"
+            normal_dir.mkdir()
+            abnormal_dir.mkdir()
+            (normal_dir / "normal_a.wav").touch()
+            (normal_dir / "normal_b.wav").touch()
+            (abnormal_dir / "abnormal.wav").touch()
+
+            def fake_features(path: Path) -> dict[str, float]:
+                offset = 1.0 if path.stem.endswith("b") else 0.0
+                return {
+                    name: float(index + offset)
+                    for index, name in enumerate(FEATURE_NAMES)
+                }
+
+            normal_model_path = root / "normal-model.joblib"
+            with patch(
+                "modules.train.extract_features", side_effect=fake_features
+            ) as extract:
+                model = train_model(root, model_path=normal_model_path)
+            self.assertTrue(normal_model_path.is_file())
+            self.assertEqual(model.named_steps["scaler"].n_samples_seen_, 2)
+            self.assertEqual(
+                {call.args[0].parent.name for call in extract.call_args_list},
+                {"normal"},
+            )
+
+            healthy_root = root / "legacy-dataset"
+            healthy_dir = healthy_root / "healthy"
+            healthy_dir.mkdir(parents=True)
+            (healthy_dir / "healthy_a.wav").touch()
+            (healthy_dir / "healthy_b.wav").touch()
+            with patch("modules.train.extract_features", side_effect=fake_features):
+                model = train_model(
+                    healthy_root, model_path=root / "healthy-model.joblib"
+                )
+            self.assertEqual(model.named_steps["scaler"].n_samples_seen_, 2)
 
 
 class EvaluationTests(unittest.TestCase):

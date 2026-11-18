@@ -1,4 +1,4 @@
-"""Train an Isolation Forest using recordings from dataset/normal."""
+"""Train an Isolation Forest using healthy recordings."""
 
 from __future__ import annotations
 
@@ -27,12 +27,29 @@ def train_model(
     contamination: float | str = "auto",
     random_state: int = 42,
 ) -> Pipeline:
-    """Fit and save a model from valid WAV files under ``dataset_path/normal``."""
+    """Fit and save a model from healthy WAV files in the dataset.
+
+    ``dataset/normal`` is the preferred location. ``dataset/healthy`` is
+    accepted as a compatibility fallback for the existing dashboard.
+    """
     dataset = Path(dataset_path)
     normal_dir = dataset / "normal"
+    healthy_dir = dataset / "healthy"
+    normal_has_wavs = normal_dir.is_dir() and any(
+        path.is_file() and path.suffix.lower() in WAV_SUFFIXES
+        for path in normal_dir.rglob("*")
+    )
+    healthy_has_wavs = healthy_dir.is_dir() and any(
+        path.is_file() and path.suffix.lower() in WAV_SUFFIXES
+        for path in healthy_dir.rglob("*")
+    )
+    if not normal_has_wavs and healthy_has_wavs:
+        normal_dir = healthy_dir
+    elif not normal_dir.is_dir() and healthy_dir.is_dir():
+        normal_dir = healthy_dir
     if not normal_dir.is_dir():
         raise FileNotFoundError(
-            f"Healthy recordings directory not found: {normal_dir}. "
+            f"Healthy recordings directory not found under {dataset}. "
             "Add WAV recordings to dataset/normal/ before training."
         )
 
@@ -44,7 +61,7 @@ def train_model(
     if not audio_paths:
         raise ValueError(
             f"No WAV recordings found in {normal_dir}. "
-            "Add healthy machine WAV recordings to dataset/normal/."
+            f"Add healthy machine WAV recordings to {normal_dir}."
         )
 
     feature_rows: list[list[float]] = []

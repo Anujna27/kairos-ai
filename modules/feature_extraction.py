@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Final
-
-import librosa
-import numpy as np
+from typing import Any, Final
 
 logger = logging.getLogger(__name__)
 
@@ -38,32 +35,37 @@ class FeatureExtractionError(ValueError):
     """Raised when an audio file cannot produce valid features."""
 
 
-def extract_features(audio_path: str | Path) -> dict[str, float]:
-    """Extract consistently ordered, finite features from a WAV recording.
-
-    All recordings are converted to mono and resampled to 22,050 Hz by
-    librosa. Frame-based features are summarized by their mean and standard
-    deviation, resulting in a fixed-size dictionary suitable for ML pipelines.
-    """
-    path = Path(audio_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Audio file does not exist: {path}")
-
+def _scientific_modules() -> tuple[Any, Any]:
     try:
-        audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-    except Exception as exc:
-        logger.exception("Could not decode audio file %s", path)
-        raise FeatureExtractionError(f"Could not read audio file: {path}") from exc
+        import librosa
+        import numpy as np
+    except ImportError as exc:
+        from .signal_processing import ScientificDependencyError
 
+        raise ScientificDependencyError(
+            "Audio feature extraction needs NumPy and Librosa."
+        ) from exc
+    return librosa, np
+
+
+def _read_audio(path: Path, librosa: Any) -> tuple[Any, int]:
+    return librosa.load(path, sr=SAMPLE_RATE, mono=True)
+
+
+def _summarize_features(
+    audio: Any, path_label: str, librosa: Any, np: Any
+) -> dict[str, float]:
     if audio.size == 0:
-        raise FeatureExtractionError(f"Audio file is empty: {path}")
+        raise FeatureExtractionError(f"Audio file is empty: {path_label}")
     if audio.size < MIN_AUDIO_SAMPLES:
         raise FeatureExtractionError(
-            f"Audio is too short ({audio.size} samples); "
-            f"at least {MIN_AUDIO_SAMPLES} samples are required at {SAMPLE_RATE} Hz"
+            f"Audio is too short ({audio.size} samples); at least "
+            f"{MIN_AUDIO_SAMPLES} samples are required at {SAMPLE_RATE} Hz"
         )
     if not np.isfinite(audio).all():
-        raise FeatureExtractionError(f"Audio contains non-finite samples: {path}")
+        raise FeatureExtractionError(
+            f"Audio contains non-finite samples: {path_label}"
+        )
 
     try:
         mfcc = librosa.feature.mfcc(
@@ -91,9 +93,9 @@ def extract_features(audio_path: str | Path) -> dict[str, float]:
             )[0],
         }
     except Exception as exc:
-        logger.exception("Feature extraction failed for %s", path)
+        logger.exception("Feature extraction failed for %s", path_label)
         raise FeatureExtractionError(
-            f"Could not extract features from audio file: {path}"
+            f"Could not extract features from audio file: {path_label}"
         ) from exc
 
     features: dict[str, float] = {}
@@ -108,6 +110,49 @@ def extract_features(audio_path: str | Path) -> dict[str, float]:
         list(features.values())
     ).all():
         raise FeatureExtractionError(
-            f"Feature extraction produced invalid values for {path}"
+            f"Feature extraction produced invalid values for {path_label}"
         )
     return features
+
+
+def extract_features_from_audio(
+    audio: Any, sample_rate: int
+) -> dict[str, float]:
+    """Extract the same features from in-memory mono or multichannel samples."""
+    if sample_rate <= 0:
+        raise FeatureExtractionError("Audio sample rate must be positive.")
+    librosa, np = _scientific_modules()
+    try:
+        samples = np.asarray(audio, dtype=float)
+        if samples.ndim == 2:
+            samples = np.mean(samples, axis=1)
+        if samples.ndim != 1:
+            raise FeatureExtractionError("Audio must be a mono or multichannel array.")
+        if sample_rate != SAMPLE_RATE:
+            samples = librosa.resample(
+                samples, orig_sr=sample_rate, target_sr=SAMPLE_RATE
+            )
+    except FeatureExtractionError:
+        raise
+    except Exception as exc:
+        raise FeatureExtractionError("Could not prepare in-memory audio.") from exc
+    return _summarize_features(samples, "<in-memory audio>", librosa, np)
+
+
+def extract_features(audio_path: str | Path) -> dict[str, float]:
+    """Extract consistently ordered features from a WAV recording.
+
+    Recordings are converted to mono and resampled to 22,050 Hz. All
+    frame-based features are summarized by their mean and standard deviation.
+    """
+    path = Path(audio_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Audio file does not exist: {path}")
+
+    librosa, np = _scientific_modules()
+    try:
+        audio, _ = _read_audio(path, librosa)
+    except Exception as exc:
+        logger.exception("Could not decode audio file %s", path)
+        raise FeatureExtractionError(f"Could not read audio file: {path}") from exc
+    return _summarize_features(audio, str(path), librosa, np)

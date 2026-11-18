@@ -1,1 +1,1 @@
-"""EchoSense machine-sound anomaly detection package."""
+"""KAIROS-AI application and EchoSense anomaly-detection modules."""

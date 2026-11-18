@@ -1,56 +1,63 @@
 heelooo
 
-# EchoSense anomaly detection
+# KAIROS-AI
 
-This repository contains the reusable AI/ML module for detecting anomalous
-machine sounds. It trains an Isolation Forest on healthy recordings and
-reserves abnormal recordings for evaluation.
+KAIROS-AI is a Streamlit prototype for acoustic machine-health monitoring. It
+supports laptop microphone recordings and uploaded audio, and displays waveform,
+FFT, spectrogram, MFCC, spectral features, and optional Isolation Forest results.
+No live IoT feed, fault diagnosis, or performance claims are included.
 
-## Installation
-
-Use Python 3.10 or later in a virtual environment:
+## Installation and dashboard
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+streamlit run app.py
 ```
 
-## Dataset
+Upload WAV/FLAC (and MP3 where the local SoundFile installation supports it),
+select a machine, and choose **Analyze audio**. Microphone recording needs a
+default input device and microphone permission.
 
-Add real WAV recordings to these folders:
+## Anomaly detection module
+
+The reusable Member 3 pipeline is in `modules/`. It converts WAV input to mono
+at 22,050 Hz and extracts 13 MFCC means and standard deviations plus mean and
+standard deviation summaries for RMS energy, spectral centroid, bandwidth,
+rolloff, and zero-crossing rate. Training uses only healthy recordings and
+saves a StandardScaler + Isolation Forest pipeline with Joblib.
+
+Add real WAV files here:
 
 ```text
 dataset/
-├── normal/       # healthy recordings used for training and evaluation
-└── abnormal/     # labeled abnormal recordings used only for evaluation
+├── normal/       # preferred training data and normal evaluation examples
+├── abnormal/     # labeled examples reserved for evaluation
+└── healthy/      # compatibility fallback for the existing dashboard
 ```
 
-At least two valid healthy recordings are required to train. The module
-converts audio to mono, resamples to 22,050 Hz, and skips unreadable or
-excessively short WAV files. It does not generate training recordings.
+Put at least two valid recordings in `dataset/normal/`. If that directory has
+no WAV files, `dataset/healthy/` is accepted for dashboard compatibility.
+Abnormal recordings are never used for fitting.
 
-## Train
-
-From the project root:
+### Train
 
 ```bash
 python -m modules.train --dataset dataset --model models/isolation_forest.joblib
 ```
 
-Training uses only `dataset/normal/`; abnormal recordings are never loaded
-for model fitting. The default contamination is `auto`; set, for example,
-`--contamination 0.05` to configure it. A trained pipeline, including its
-feature scaler, is saved with Joblib.
+The default contamination is `auto`; it can be set with `--contamination 0.05`.
+Only recordings from `normal/` (or the documented `healthy/` fallback) are used.
 
-## Predict
+### Predict
 
 ```bash
 python -m modules.predict path/to/recording.wav \
   --model models/isolation_forest.joblib
 ```
 
-Reusable functions are available from `modules`:
+Python interfaces:
 
 ```python
 from modules.anomaly_detection import predict_from_features
@@ -58,15 +65,15 @@ from modules.feature_extraction import extract_features
 from modules.predict import predict_anomaly
 
 features = extract_features("recording.wav")
-result = predict_from_features(features)  # loads the default saved model
+result = predict_from_features(features)  # loads the default trained model
 # Or: result = predict_anomaly("recording.wav")
 ```
 
-Predictions contain `status` (`NORMAL` or `ANOMALY`), `is_anomaly`,
-`decision_score`, and `anomaly_score` (the negative decision score).
-Isolation Forest scores are uncalibrated and are not probabilities.
+Results contain `status` (`NORMAL` or `ANOMALY`), `is_anomaly`,
+`decision_score`, and `anomaly_score` (the negative decision score). Scores
+are uncalibrated and are not probabilities.
 
-## Evaluate
+### Evaluate
 
 ```bash
 python -m modules.evaluation \
@@ -76,9 +83,18 @@ python -m modules.evaluation \
 ```
 
 Evaluation reports accuracy, precision, recall, F1, confusion matrix, false
-positive/negative rates, and ROC-AUC when both labeled classes are present.
+positive/negative rates, and ROC-AUC when both labeled classes are available.
 It writes JSON metrics and a confusion-matrix PNG alongside the output file.
-No performance claims are made without running evaluation on labeled data.
+
+## Architecture
+
+- `app.py`: dashboard, navigation, session history, and charts.
+- `modules/audio_input.py`: upload decoding, preprocessing, and microphone capture.
+- `modules/signal_processing.py`: waveform, FFT, spectrogram, and acoustic views.
+- `modules/feature_extraction.py`: shared fixed-order ML feature extraction.
+- `modules/anomaly_detection.py`: pipeline persistence and prediction adapters.
+- `modules/train.py`, `modules/predict.py`, `modules/evaluation.py`: ML workflows.
+- `modules/machine_manager.py`: machine registry and session-derived snapshots.
 
 ## Tests
 
