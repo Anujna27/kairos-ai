@@ -1,0 +1,7 @@
+numpy
+librosa
+scipy
+matplotlib
+plotly
+soundfile
+sounddevice
