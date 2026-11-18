@@ -5,6 +5,12 @@ supports laptop microphone recordings and uploaded audio, and displays waveform,
 FFT, spectrogram, MFCC, spectral features, and optional Isolation Forest results.
 No live IoT feed, fault diagnosis, or performance claims are included.
 
+The current prototype has been trained locally on 21 healthy fan `id_00`
+recordings (the 20 repository samples plus one additional normal clip). Twenty
+abnormal `id_00` recordings are kept separately for evaluation. With this small
+sample set, the initial evaluation flagged 12 of 20 abnormal clips; this is a
+development check, not a production accuracy claim.
+
 ## Installation and dashboard
 
 ```powershell
@@ -15,8 +21,12 @@ python -m streamlit run app.py
 ```
 
 Upload WAV/FLAC (and MP3 where the local SoundFile installation supports it),
-select a machine, and choose **Analyze audio**. Microphone recording needs a
-default input device and microphone permission.
+select a machine, and choose **Analyze audio**. The Acoustic Analysis page
+shows the waveform, FFT spectrum, spectrogram, extracted features, and model
+diagnostic result. AI Diagnostics shows model status and can train from the
+healthy dataset. Machine Monitoring and Alerts & History provide the prototype
+fleet view and session history. Microphone recording needs a default input
+device and microphone permission.
 
 ## Anomaly detection module
 
@@ -26,7 +36,8 @@ standard deviation summaries for RMS energy, spectral centroid, bandwidth,
 rolloff, and zero-crossing rate. Training uses only healthy recordings and
 saves a StandardScaler + Isolation Forest pipeline with Joblib.
 
-Add real WAV files here:
+Add real WAV files here. Train with `normal/` only; reserve `abnormal/` for
+evaluation:
 
 ```text
 dataset/
@@ -84,6 +95,18 @@ Evaluation reports accuracy, precision, recall, F1, confusion matrix, false
 positive/negative rates, and ROC-AUC when both labeled classes are available.
 It writes JSON metrics and a confusion-matrix PNG alongside the output file.
 
+## Audio and feature pipeline
+
+`modules/audio_input.py` exposes `load_audio(path)` and
+`record_audio(duration, sample_rate, channels)`. Both return an audio array and
+sample rate that can be passed to `modules.signal_processing.process_audio()`.
+The signal-processing layer converts multichannel audio to normalized mono,
+then provides waveform and spectrogram Plotly figures, one-sided FFT data,
+dominant frequency, 13 MFCC coefficients, RMS energy, zero-crossing rate,
+spectral centroid, bandwidth, rolloff, and spectral flux. The feature extractor
+keeps a fixed feature order so the training and prediction paths use the same
+schema.
+
 ## Architecture
 
 - `app.py`: dashboard, navigation, session history, and charts.
@@ -99,3 +122,8 @@ It writes JSON metrics and a confusion-matrix PNG alongside the output file.
 ```bash
 python -m unittest discover -s tests
 ```
+
+The tests use synthetic audio and validate feature extraction, model behavior,
+and invalid-input handling. A trained `models/isolation_forest.joblib` file is
+generated locally and is intentionally not required in source control; train
+it from the dataset after cloning the project.
