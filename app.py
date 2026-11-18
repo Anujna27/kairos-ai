@@ -211,7 +211,7 @@ def about() -> None:
 init_state()
 with st.sidebar:
     st.markdown('<div class="brand">KAIROS-AI</div><div class="tagline">Acoustic Intelligence for Predictive Machine Health Monitoring</div>', unsafe_allow_html=True)
-    page = st.radio("Navigate", ["Overview", "Acoustic Analysis", "AI Diagnostics", "Machine Monitoring", "Alerts & History", "About Project"], label_visibility="collapsed")
+    page = st.radio("Navigate", ["Overview", "Acoustic Analysis", "AI Diagnostics", "Machine Monitoring", "Alerts & History", "About Project"])
     st.divider()
     st.caption("Prototype mode · audio-first")
 
