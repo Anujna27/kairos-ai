@@ -9,8 +9,9 @@ import streamlit as st
 
 from modules.anomaly_detection import MODEL_PATH, load_model, model_status, predict_anomaly, train_from_directory
 from modules.audio_input import load_audio, record_audio
+from modules.feature_extraction import FeatureExtractionError, extract_features_from_audio
 from modules.machine_manager import get_machines, machine_snapshot, utc_timestamp
-from modules.signal_processing import ScientificDependencyError, calculate_fft, extract_features, generate_spectrogram, generate_waveform
+from modules.signal_processing import ScientificDependencyError, calculate_fft, generate_spectrogram, generate_waveform
 
 
 st.set_page_config(page_title="KAIROS-AI", page_icon="◈", layout="wide", initial_sidebar_state="expanded")
@@ -111,11 +112,12 @@ def acoustic_analysis() -> None:
         if st.button("ANALYZE AUDIO", type="primary"):
             with st.spinner("Extracting acoustic features and running diagnostics…"):
                 try:
-                    features = extract_features(audio, rate)
-                    result = predict_anomaly(features, load_model())
+                    features = extract_features_from_audio(audio, rate)
+                    model = load_model() if model_status()["status"] == "TRAINED" else None
+                    result = predict_anomaly(features, model)
                     st.session_state.analysis = {"audio": audio, "rate": rate, "features": features, "result": result, "machine_id": st.session_state.selected_machine}
                     st.session_state.history.append({"machine_id": st.session_state.selected_machine, "timestamp": utc_timestamp(), "result": result["status"], "score": result["score"]})
-                except ScientificDependencyError as exc:
+                except (ScientificDependencyError, FeatureExtractionError) as exc:
                     st.warning(str(exc))
                     st.info("Waveform and FFT remain available. MFCC/spectral features and AI diagnostics are temporarily unavailable.")
     render_analysis(st.session_state.analysis)
@@ -214,4 +216,3 @@ with st.sidebar:
     st.caption("Prototype mode · audio-first")
 
 {"Overview": overview, "Acoustic Analysis": acoustic_analysis, "AI Diagnostics": diagnostics, "Machine Monitoring": monitoring, "Alerts & History": alerts, "About Project": about}[page]()
-

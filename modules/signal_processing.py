@@ -74,4 +74,3 @@ def feature_vector(features: Dict[str, float]) -> Any:
         raise ScientificDependencyError("AI feature vectors need NumPy, but Windows Application Control is blocking a NumPy component.") from exc
     keys = [f"mfcc_{i}" for i in range(1, 14)] + ["rms_energy", "spectral_centroid_hz", "spectral_bandwidth_hz", "zero_crossing_rate"]
     return np.asarray([features.get(key, 0.0) for key in keys], dtype=np.float32)
-
