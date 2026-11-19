@@ -95,6 +95,66 @@ Evaluation reports accuracy, precision, recall, F1, confusion matrix, false
 positive/negative rates, and ROC-AUC when both labeled classes are available.
 It writes JSON metrics and a confusion-matrix PNG alongside the output file.
 
+## Live monitoring and email alerts
+
+After training `models/isolation_forest.joblib`, continuous monitoring can run
+as a separate process from the Streamlit dashboard. It captures 5-second audio
+windows from the default microphone, analyzes every 5 seconds, stores events in
+`data/kairos_events.db`, and sends an email after three consecutive anomaly
+windows. Email alerts are suppressed for one hour after an alert.
+
+Configure SMTP through environment variables before starting the monitor:
+
+```bash
+export SMTP_HOST=smtp.example.com
+export SMTP_PORT=587
+export SMTP_USERNAME=your-user
+export SMTP_PASSWORD=your-password
+export ALERT_FROM=alerts@example.com
+export ALERT_TO=you@example.com
+python -m modules.live_monitor --machine-id MTR-01
+```
+
+Use `--no-email` to test microphone capture and event logging without SMTP.
+The monitor is intended to run as a background service; closing the Streamlit
+browser does not stop it.
+
+### Recommended demo
+
+1. Train the model from the healthy WAV recordings in `dataset/normal/`.
+2. Start the dashboard with `streamlit run app.py`.
+3. Open **Live Monitoring**, select the target machine, and turn email alerts
+   off for the first run.
+4. Start monitoring and wait for the waveform to appear.
+5. Speak or make a controlled sound near the microphone to see new event rows
+   and charts. This demonstrates the pipeline, but is not a machine-fault test.
+6. For an alert demonstration, temporarily use a test model/dataset or set
+   **Anomalous windows before alert** to `1`; restore it to `3` afterward.
+7. Enable email only after SMTP settings have been tested. Use **Clear live
+   history** to reset the event table and waveform between demonstrations.
+
+### External microphone
+
+The current monitor uses the system default input device. An external USB
+microphone can be connected and selected as the operating system's default
+recording device before starting monitoring. For a multi-device setup, list
+available PortAudio devices with:
+
+```bash
+python -c "import sounddevice as sd; print(sd.query_devices())"
+```
+
+Then pass the device index or exact device name to the worker:
+
+```bash
+python -m modules.live_monitor --device 2 --machine-id MTR-01
+```
+
+The same device selector can be exposed in the dashboard later. For reliable
+24x7 use, prefer a USB microphone with a fixed device name, disable automatic
+power saving, and keep the microphone physically consistent with the recordings
+used to train the model.
+
 ## Audio and feature pipeline
 
 `modules/audio_input.py` exposes `load_audio(path)` and
@@ -115,6 +175,8 @@ schema.
 - `modules/feature_extraction.py`: shared fixed-order ML feature extraction.
 - `modules/anomaly_detection.py`: pipeline persistence and prediction adapters.
 - `modules/train.py`, `modules/predict.py`, `modules/evaluation.py`: ML workflows.
+- `modules/live_monitor.py`: continuous microphone monitoring worker.
+- `modules/alerts.py`: SMTP notifications, alert cooldown, and event storage.
 - `modules/machine_manager.py`: machine registry and session-derived snapshots.
 
 ## Tests
