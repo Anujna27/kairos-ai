@@ -1,0 +1,818 @@
+/* Hallmark · v2.0.0 · shape: Map / Diagram · theme: Console (graphite) · sheet: A3 landscape · signature: high/mid/low repo architecture */
+/* critique: make three abstraction levels legible on one sheet; use colour only to separate instrument data, operator action and model stages. */
+
+@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;500&family=Host+Grotesk:wght@400;500&display=swap");
+@import url("./tokens.css");
+
+html,
+body {
+  margin: 0;
+  min-width: 0;
+  overflow-x: clip;
+  background: var(--color-paper-3);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-synthesis: none;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  scrollbar-color: var(--color-rule-2) var(--color-paper-3);
+  caret-color: var(--color-accent);
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-ink);
+}
+
+body {
+  min-height: 100vh;
+}
+
+.sheet {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--sheet-width);
+  min-height: var(--sheet-height);
+  padding: 14mm 16mm 12mm;
+  overflow: clip;
+  background-color: var(--color-paper);
+  background-image:
+    linear-gradient(var(--color-rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-rule) 1px, transparent 1px);
+  background-size: 30mm 30mm;
+  background-position: 16mm 14mm;
+}
+
+.sheet::before {
+  position: absolute;
+  inset: 8mm;
+  border: var(--rule-hair) solid var(--color-rule);
+  pointer-events: none;
+  content: "";
+}
+
+.sheet-header,
+.architecture-map,
+.offline-band,
+.boundary-band,
+.sheet-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.sheet-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12mm;
+  align-items: end;
+  padding-bottom: 6mm;
+  border-bottom: var(--rule-heavy) solid var(--color-rule-2);
+}
+
+.kicker,
+.label,
+.module-file,
+.mono,
+.title-block,
+.node-number,
+.edge-label,
+.footer-note {
+  font-family: var(--font-outlier);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+.kicker,
+.label,
+.module-file,
+.edge-label,
+.footer-note {
+  color: var(--color-muted);
+  font-size: 9pt;
+  line-height: 1.35;
+}
+
+.kicker {
+  margin: 0 0 2.5mm;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  overflow-wrap: break-word;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+
+h1 {
+  max-width: 22ch;
+  font-size: 31pt;
+}
+
+.subtitle {
+  max-width: 76ch;
+  margin-top: 2.5mm;
+  color: var(--color-ink-2);
+  font-size: 12pt;
+  line-height: 1.45;
+}
+
+.title-block {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 4mm 8mm;
+  align-items: end;
+  padding: 3mm 4mm;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  color: var(--color-ink-2);
+  font-size: 8.5pt;
+  line-height: 1.3;
+}
+
+.title-block > div > span:last-child {
+  display: block;
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 10pt;
+  font-weight: 500;
+}
+
+.architecture-map {
+  margin-top: 8mm;
+  padding: 5mm;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  background: var(--color-paper-2);
+}
+
+.map-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10mm;
+  align-items: baseline;
+  padding-bottom: 4mm;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.map-head h2,
+.band-head h2 {
+  font-size: 17pt;
+}
+
+.map-head p,
+.band-head p {
+  max-width: 60ch;
+  color: var(--color-muted);
+  font-size: 9.5pt;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7mm;
+  align-items: stretch;
+  padding: 7mm 0 5mm;
+}
+
+.flow-column {
+  position: relative;
+  min-width: 0;
+}
+
+.flow-column:not(:last-child)::after {
+  position: absolute;
+  top: 23mm;
+  right: -5mm;
+  width: 4mm;
+  border-top: var(--rule-heavy) solid var(--color-cool);
+  content: "";
+}
+
+.flow-column:not(:last-child)::before {
+  position: absolute;
+  top: calc(23mm - 1.5mm);
+  right: -5mm;
+  border-top: 3mm solid transparent;
+  border-bottom: 3mm solid transparent;
+  border-left: 3mm solid var(--color-cool);
+  content: "";
+}
+
+.flow-column--person::after {
+  border-color: var(--color-accent) !important;
+}
+
+.column-head {
+  display: flex;
+  min-height: 13mm;
+  gap: 3mm;
+  align-items: start;
+  padding-bottom: 3mm;
+  border-bottom: var(--rule-heavy) solid var(--color-rule-2);
+}
+
+.node-number {
+  color: var(--color-cool);
+  font-size: 11pt;
+}
+
+.flow-column--person .node-number {
+  color: var(--color-accent);
+}
+
+.column-head h3 {
+  font-size: 13pt;
+}
+
+.column-head p {
+  margin-top: 1mm;
+  color: var(--color-muted);
+  font-size: 8.5pt;
+  line-height: 1.4;
+}
+
+.node {
+  position: relative;
+  margin-top: 4mm;
+  padding: 3.5mm;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-card);
+  background: var(--color-paper-3);
+}
+
+.node--instrument {
+  border-left: 2.5mm solid var(--color-cool);
+}
+
+.node--person {
+  border-left: 2.5mm solid var(--color-accent);
+}
+
+.node--model {
+  border-left: 2.5mm solid var(--color-ok);
+}
+
+.node h3 {
+  font-size: 11pt;
+  letter-spacing: -0.02em;
+}
+
+.node p {
+  margin-top: 1.5mm;
+  color: var(--color-ink-2);
+  font-size: 8.5pt;
+  line-height: 1.42;
+}
+
+.module-file {
+  display: block;
+  margin-top: 2.5mm;
+  color: var(--color-cool);
+  font-size: 7.5pt;
+  overflow-wrap: anywhere;
+}
+
+.node--person .module-file {
+  color: var(--color-accent);
+}
+
+.node--model .module-file {
+  color: var(--color-ok);
+}
+
+.flow-caption {
+  padding-top: 4mm;
+  border-top: var(--rule-hair) solid var(--color-rule);
+  color: var(--color-muted);
+  font-size: 8.5pt;
+  line-height: 1.45;
+}
+
+.flow-caption strong {
+  color: var(--color-ink-2);
+  font-weight: 500;
+}
+
+.band {
+  margin-top: 7mm;
+  padding: 5mm;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  background: var(--color-paper-3);
+  color: var(--color-ink);
+}
+
+.band-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10mm;
+  align-items: baseline;
+  padding-bottom: 3.5mm;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.band-head h2 {
+  color: var(--color-accent);
+}
+
+.band-head p {
+  text-align: right;
+}
+
+.offline-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 0;
+  margin-top: 4mm;
+  border: var(--rule-hair) solid var(--color-rule);
+}
+
+.offline-cell {
+  min-width: 0;
+  min-height: 30mm;
+  padding: 3.5mm;
+  border-right: var(--rule-hair) solid var(--color-rule);
+}
+
+.offline-cell:last-child {
+  border-right: 0;
+}
+
+.offline-cell h3 {
+  font-size: 11pt;
+}
+
+.offline-cell p {
+  margin-top: 1.5mm;
+  color: var(--color-ink-2);
+  font-size: 8.5pt;
+  line-height: 1.45;
+}
+
+.offline-cell .module-file {
+  color: var(--color-accent);
+}
+
+.boundary-band {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 8mm;
+  margin-top: 7mm;
+  padding: 5mm;
+  border: var(--rule-heavy) dashed var(--color-rule-2);
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+}
+
+.boundary-copy h2 {
+  color: var(--color-muted);
+  font-size: 14pt;
+}
+
+.boundary-copy p {
+  max-width: 62ch;
+  margin-top: 2mm;
+  color: var(--color-ink-2);
+  font-size: 9pt;
+  line-height: 1.5;
+}
+
+.boundary-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4mm;
+  align-items: center;
+}
+
+.boundary-node {
+  min-width: 0;
+  padding: 3mm;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-small);
+  color: var(--color-muted);
+  font-size: 8.5pt;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.boundary-node:not(:last-child)::after {
+  position: absolute;
+  content: "";
+}
+
+.sheet-footer {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr;
+  gap: 8mm;
+  margin-top: 7mm;
+  padding-top: 4mm;
+  border-top: var(--rule-heavy) solid var(--color-rule-2);
+}
+
+.sheet-footer p {
+  color: var(--color-muted);
+  font-size: 8pt;
+  line-height: 1.45;
+}
+
+.sheet-footer strong {
+  color: var(--color-ink-2);
+  font-weight: 500;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4mm;
+}
+
+.legend-item {
+  display: inline-flex;
+  gap: 2mm;
+  align-items: center;
+  color: var(--color-muted);
+  font-size: 8pt;
+}
+
+.legend-swatch {
+  width: 8mm;
+  height: 2mm;
+  border-radius: 2mm;
+  background: var(--color-cool);
+}
+
+.legend-swatch--amber {
+  background: var(--color-accent);
+}
+
+.legend-swatch--green {
+  background: var(--color-ok);
+}
+
+.legend-swatch--dash {
+  border: var(--rule-hair) dashed var(--color-rule-2);
+  background: transparent;
+}
+
+.tier-head {
+  display: flex;
+  gap: 3mm;
+  align-items: start;
+  min-width: 0;
+}
+
+.tier-head h2 {
+  font-size: 15pt;
+}
+
+.tier-head p {
+  margin-top: 1mm;
+  color: var(--color-muted);
+  font-size: 8.5pt;
+  line-height: 1.35;
+}
+
+.tier-mark {
+  display: grid;
+  flex: 0 0 8mm;
+  width: 8mm;
+  height: 8mm;
+  place-items: center;
+  border: var(--rule-hair) solid currentColor;
+  border-radius: var(--radius-small);
+  font-family: var(--font-outlier);
+  font-size: 10pt;
+  line-height: 1;
+}
+
+.tier-mark--amber {
+  color: var(--color-accent);
+}
+
+.tier-mark--cool {
+  color: var(--color-cool);
+}
+
+.tier-mark--green {
+  color: var(--color-ok);
+}
+
+.tier-high,
+.tier-low {
+  color: var(--color-ink);
+}
+
+.tier-high {
+  margin-top: 5mm;
+}
+
+.tier-high .tier-head,
+.tier-low .tier-head {
+  padding-bottom: 2.5mm;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.high-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7mm minmax(0, 1fr) 7mm minmax(0, 1fr) 7mm minmax(0, 1fr);
+  gap: 2.5mm;
+  align-items: center;
+  margin-top: 3.5mm;
+}
+
+.high-node {
+  min-width: 0;
+  min-height: 23mm;
+  padding: 3mm;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-left: 2mm solid var(--color-cool);
+  border-radius: var(--radius-card);
+  background: var(--color-paper-2);
+}
+
+.high-node--person {
+  border-left-color: var(--color-accent);
+}
+
+.high-node--model {
+  border-left-color: var(--color-ok);
+}
+
+.high-node h3 {
+  font-size: 11pt;
+}
+
+.high-node p {
+  margin-top: 1.5mm;
+  color: var(--color-ink-2);
+  font-size: 8.2pt;
+  line-height: 1.35;
+}
+
+.high-node--person .module-file {
+  color: var(--color-accent);
+}
+
+.high-node--model .module-file {
+  color: var(--color-ok);
+}
+
+.high-link {
+  position: relative;
+  height: var(--rule-heavy);
+  background: var(--color-cool);
+}
+
+.high-link::after {
+  position: absolute;
+  top: -1.5mm;
+  right: -0.5mm;
+  border-top: 2.5mm solid transparent;
+  border-bottom: 2.5mm solid transparent;
+  border-left: 2.5mm solid var(--color-cool);
+  content: "";
+}
+
+.high-boundary {
+  margin-top: 3mm;
+  padding-top: 2.5mm;
+  border-top: var(--rule-hair) dashed var(--color-rule-2);
+  color: var(--color-muted);
+  font-size: 8pt;
+  line-height: 1.35;
+}
+
+.high-boundary strong {
+  color: var(--color-ink-2);
+  font-weight: 500;
+}
+
+.tier-mid {
+  margin-top: 5mm;
+}
+
+.tier-mid .map-head {
+  padding-bottom: 2.5mm;
+}
+
+.tier-mid .map-head p {
+  text-align: left;
+}
+
+.tier-low {
+  margin-top: 5mm;
+}
+
+.low-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 3mm;
+  border: var(--rule-hair) solid var(--color-rule);
+}
+
+.low-cell {
+  min-width: 0;
+  min-height: 28mm;
+  padding: 3mm;
+  border-right: var(--rule-hair) solid var(--color-rule);
+}
+
+.low-cell:last-child {
+  border-right: 0;
+}
+
+.low-cell h3 {
+  font-size: 10.5pt;
+}
+
+.low-cell .module-file {
+  margin-top: 2mm;
+  color: var(--color-accent);
+}
+
+.low-cell p {
+  margin-top: 1mm;
+  color: var(--color-ink-2);
+  font-size: 8pt;
+  line-height: 1.3;
+}
+
+.low-note {
+  color: var(--color-muted) !important;
+}
+
+@media screen and (max-width: 1200px) {
+  .sheet {
+    transform-origin: top left;
+    scale: 0.75;
+    margin-bottom: -25%;
+  }
+}
+
+@media print {
+  @page {
+    size: A3 landscape;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: var(--sheet-width);
+    height: var(--sheet-height);
+  }
+
+  .sheet {
+    min-height: 0;
+    height: var(--sheet-height);
+    padding: 10mm 12mm 8mm;
+    page-break-after: avoid;
+  }
+
+  .sheet-header {
+    gap: 8mm;
+    padding-bottom: 4mm;
+  }
+
+  h1 {
+    font-size: 27pt;
+  }
+
+  .subtitle {
+    margin-top: 1.5mm;
+    font-size: 10.5pt;
+  }
+
+  .architecture-map {
+    margin-top: 5mm;
+    padding: 3.5mm;
+  }
+
+  .map-head {
+    padding-bottom: 2.5mm;
+  }
+
+  .flow {
+    gap: 5mm;
+    padding: 4mm 0 3mm;
+  }
+
+  .column-head {
+    min-height: 10mm;
+    padding-bottom: 2mm;
+  }
+
+  .node {
+    margin-top: 2.5mm;
+    padding: 2.5mm;
+  }
+
+  .node p,
+  .column-head p,
+  .offline-cell p,
+  .boundary-copy p {
+    line-height: 1.3;
+  }
+
+  .flow-caption {
+    padding-top: 2.5mm;
+  }
+
+  .band,
+  .boundary-band {
+    margin-top: 4mm;
+    padding: 3.5mm;
+  }
+
+  .tier-high,
+  .tier-mid,
+  .tier-low {
+    margin-top: 3.5mm;
+  }
+
+  .tier-high .tier-head,
+  .tier-low .tier-head {
+    padding-bottom: 1.8mm;
+  }
+
+  .high-grid {
+    gap: 2mm;
+    margin-top: 2.5mm;
+  }
+
+  .high-node {
+    min-height: 19mm;
+    padding: 2.2mm;
+  }
+
+  .high-node p,
+  .high-boundary {
+    line-height: 1.22;
+  }
+
+  .high-boundary {
+    margin-top: 2mm;
+    padding-top: 1.8mm;
+  }
+
+  .tier-mid .map-head {
+    padding-bottom: 1.8mm;
+  }
+
+  .low-grid {
+    margin-top: 2mm;
+  }
+
+  .low-cell {
+    min-height: 23mm;
+    padding: 2.2mm;
+  }
+
+  .low-cell p {
+    line-height: 1.2;
+  }
+
+  .band-head {
+    padding-bottom: 2.5mm;
+  }
+
+  .offline-grid {
+    margin-top: 2.5mm;
+  }
+
+  .offline-cell {
+    min-height: 22mm;
+    padding: 2.5mm;
+  }
+
+  .boundary-band {
+    gap: 5mm;
+  }
+
+  .sheet-footer {
+    gap: 5mm;
+    margin-top: 4mm;
+    padding-top: 2.5mm;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,50 @@
+[
+ {
+  "shape": "Map / Diagram",
+  "theme": "Console",
+  "axes": "Left-margin|Asymmetric spans|Hairline|Outlined|None|None",
+  "hero": "three-level orientation head above the map",
+  "nav": "none · single-sheet artifact",
+  "footer": "colophon with legend and prototype boundary",
+  "imagery": "none · the diagram is the image",
+  "photos": [],
+  "entry": "High, mid and low level architecture diagram for KAIROS-AI",
+  "fingerprint": "Left-margin|Asymmetric spans|Hairline|Outlined|None|None",
+  "sections": [
+   "High level · system context",
+   "Mid level · runtime path",
+   "Low level · implementation detail",
+   "Colophon"
+  ],
+  "signature": "three abstraction levels grounded in repo modules",
+  "waived": [],
+  "prompt": "create a high mid and low level architecture diagram in a3 sheet",
+  "scope": "artifact",
+  "date": "2026-11-18",
+  "mode": "build"
+ },
+ {
+  "shape": "Map / Diagram",
+  "theme": "Console",
+  "axes": "Left-margin|Asymmetric spans|Hairline|Outlined|None|None",
+  "hero": "orientation head above the map",
+  "nav": "none · single-sheet artifact",
+  "footer": "colophon with legend and prototype boundary",
+  "imagery": "none · the diagram is the image",
+  "photos": [],
+  "entry": "A3 architecture sheet for KAIROS-AI",
+  "fingerprint": "Left-margin|Asymmetric spans|Hairline|Outlined|None|None",
+  "sections": [
+   "Runtime path",
+   "Offline model workflows",
+   "Future hardware boundary",
+   "Colophon"
+  ],
+  "signature": "repo-grounded audio-to-anomaly module flow",
+  "waived": [],
+  "prompt": "inspect the directory and build an architecture diagram in an A3 sheet",
+  "scope": "artifact",
+  "date": "2026-11-18",
+  "mode": "build"
+ }
+]
