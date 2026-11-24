@@ -11,6 +11,12 @@ abnormal `id_00` recordings are kept separately for evaluation. With this small
 sample set, the initial evaluation flagged 12 of 20 abnormal clips; this is a
 development check, not a production accuracy claim.
 
+The trained model stays on the Linux laptop. A phone acts only as a wireless
+microphone and browser display: audio is sent to the laptop over WebSocket, the
+laptop extracts the exact training features and loads
+`models/isolation_forest.joblib`, then the prediction is sent back to the phone.
+The phone does not train or run the model locally.
+
 ## Installation and dashboard
 
 ```powershell
@@ -118,6 +124,60 @@ python -m modules.live_monitor --machine-id MTR-01
 Use `--no-email` to test microphone capture and event logging without SMTP.
 The monitor is intended to run as a background service; closing the Streamlit
 browser does not stop it.
+
+### Smartphone microphone monitoring
+
+Install the added FastAPI dependencies and start the phone server on the laptop:
+
+```bash
+python -m pip install -r requirements.txt
+python -m modules.phone_stream
+```
+
+On the same Wi-Fi, open `http://LAPTOP_IP:8000` on the phone. On a remote
+network, use an HTTPS tunnel or reverse proxy; browser microphone permissions
+normally require a secure origin. Grant microphone permission, enter a machine
+ID, and press **Start monitoring**. The phone sends PCM16 audio over WebSocket;
+the laptop decodes and resamples it before using the existing feature extractor
+and trained model. The Streamlit **Phone Monitoring** page shows the latest
+result and phone events.
+
+The phone page reports the final result when monitoring stops as `NORMAL` or
+`ANOMALY`, together with RMS, peak amplitude, dominant frequency, and anomaly
+score. These are real values from the last processed audio window; no result is
+shown until the laptop has successfully processed at least one window.
+
+For a quick local check, open the page on the laptop first and use the laptop
+IP from the phone. Do not expose port 8000 publicly without authentication,
+HTTPS, and a firewall rule limiting access.
+
+### Phone demo script
+
+After installing dependencies, run the included helper:
+
+```bash
+chmod +x scripts/demo_phone_monitor.sh
+./scripts/demo_phone_monitor.sh
+```
+
+In a second terminal, expose the phone server securely:
+
+```bash
+ngrok http 8000
+```
+
+Open the generated `https://...` URL on the phone, grant microphone access,
+enter a machine ID, and press **Start monitoring**. Wait for the connection and
+first model result, then press **Stop monitoring** to see the final label. The
+Streamlit dashboard can be run separately with:
+
+```bash
+.venv/bin/streamlit run app.py
+```
+
+The phone events will appear in the dashboard's **Phone Monitoring** and
+**Alerts & History** pages. Re-train the laptop model with representative
+healthy recordings before treating results as meaningful.
 
 ### Recommended demo
 

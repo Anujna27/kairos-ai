@@ -55,7 +55,10 @@ class EventStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.path)
+        # Live phone processing runs feature extraction in a worker thread.
+        # Allow this store connection to be used by that worker.
+        self.connection = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+        self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute(
             """CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

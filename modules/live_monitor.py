@@ -30,7 +30,9 @@ class LiveMonitor:
         if window_seconds <= 0 or interval_seconds <= 0:
             raise ValueError("Window and interval durations must be positive")
         self.machine_id = machine_id
-        self.window_samples = int(window_seconds * SAMPLE_RATE)
+        self.window_seconds = window_seconds
+        self.capture_rate = SAMPLE_RATE
+        self.window_samples = int(window_seconds * self.capture_rate)
         self.interval_seconds = interval_seconds
         self.model = load_model(model_path)
         self.store = EventStore(event_db)
@@ -51,7 +53,7 @@ class LiveMonitor:
         temporary = self.waveform_path.with_suffix(".tmp")
         temporary.write_text(json.dumps({"timestamp": time.time(), "samples": waveform}), encoding="utf-8")
         temporary.replace(self.waveform_path)
-        features = extract_features_from_audio(samples, SAMPLE_RATE)
+        features = extract_features_from_audio(samples, self.capture_rate)
         result = predict_from_features(features, self.model)
         alert_sent = self.policy.observe(bool(result["is_anomaly"]), time.monotonic())
         message = "Potential acoustic anomaly" if result["is_anomaly"] else "Normal"
@@ -89,11 +91,18 @@ class LiveMonitor:
                 logger.warning("Audio input status: %s", status)
             self.buffer.extend(indata[:, 0].astype(np.float32).tolist())
 
-        logger.info("Starting live monitor for %s", self.machine_id)
+        selected_device: int | str | None = device
+        if isinstance(device, str) and device.strip().isdigit():
+            selected_device = int(device.strip())
+        device_info = sd.query_devices(selected_device, "input")
+        self.capture_rate = int(round(float(device_info["default_samplerate"])))
+        self.window_samples = int(self.window_seconds * self.capture_rate)
+        self.buffer = deque(maxlen=self.window_samples)
+        logger.info("Starting live monitor for %s using device %s", self.machine_id, selected_device)
         with sd.InputStream(
-            samplerate=SAMPLE_RATE, channels=1, dtype="float32",
-            blocksize=max(256, int(SAMPLE_RATE * min(self.interval_seconds, 1.0))),
-            device=device, callback=callback,
+            samplerate=self.capture_rate, channels=1, dtype="float32",
+            blocksize=max(256, int(self.capture_rate * min(self.interval_seconds, 1.0))),
+            device=selected_device, callback=callback,
         ):
             while True:
                 time.sleep(0.25)

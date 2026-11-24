@@ -223,6 +223,15 @@ def live_monitoring() -> None:
     st.caption("Continuous microphone analysis with optional email alerts")
     process = st.session_state.live_process
     if process is not None and process.poll() is not None:
+        log_path = Path("data/live_monitor.log")
+        if log_path.is_file():
+            try:
+                log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-2000:]
+            except OSError:
+                log_tail = ""
+            if log_tail:
+                st.error("Live monitoring stopped. Last worker output:")
+                st.code(log_tail)
         st.session_state.live_process = None
         process = None
 
@@ -294,10 +303,14 @@ def live_monitoring() -> None:
                 ]
                 if not send_email:
                     command.append("--no-email")
+                log_path = Path("data/live_monitor.log")
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_handle = log_path.open("w", encoding="utf-8")
                 st.session_state.live_process = subprocess.Popen(
                     command, cwd=Path(__file__).resolve().parent, env=environment,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+                    stdout=log_handle, stderr=subprocess.STDOUT,
                 )
+                log_handle.close()
                 st.rerun()
 
     st.subheader("Recent live events")
@@ -338,6 +351,37 @@ def live_monitoring() -> None:
             st.info("No live events recorded yet.")
     else:
         st.info("No event database exists yet. Start monitoring to create it.")
+
+
+def phone_monitoring() -> None:
+    st.title("Phone Live Monitoring")
+    st.caption("Smartphone microphone → WebSocket → laptop model")
+    st.code(".venv/bin/python -m modules.phone_stream", language="bash")
+    st.write("Start the phone audio server, then open its address on the phone. The trained model remains on this laptop.")
+    state_path = Path("data/phone_live_state.json")
+    if not state_path.is_file():
+        st.info("Phone server has not reported a session yet.")
+        return
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        st.warning("Phone session state is temporarily unavailable.")
+        return
+    if not state.get("connected"):
+        st.warning("Phone is disconnected.")
+    else:
+        st.success(f"Phone connected for {state.get('machine_id', 'unknown machine')}.")
+    if state.get("status"):
+        st.metric("Latest result", state["status"])
+        cols = st.columns(4)
+        cols[0].metric("RMS", f"{state.get('rms', 0):.4f}")
+        cols[1].metric("Peak", f"{state.get('peak', 0):.4f}")
+        cols[2].metric("Dominant frequency", f"{state.get('dominant_frequency', 0):.1f} Hz")
+        cols[3].metric("Anomaly score", f"{state.get('anomaly_score', 0):.4f}")
+    events = [event for event in live_events() if str(event.get("machine_id", "")).startswith("PHONE")]
+    if events:
+        st.subheader("Phone events")
+        st.dataframe(events[:20], use_container_width=True, hide_index=True)
 
 
 @st.dialog("Clear live monitoring history")
@@ -416,8 +460,8 @@ def about() -> None:
 init_state()
 with st.sidebar:
     st.markdown('<div class="brand">KAIROS-AI</div><div class="tagline">Acoustic Intelligence for Predictive Machine Health Monitoring</div>', unsafe_allow_html=True)
-    page = st.radio("Navigate", ["Overview", "Acoustic Analysis", "AI Diagnostics", "Live Monitoring", "Machine Monitoring", "Alerts & History", "About Project"], label_visibility="collapsed")
+    page = st.radio("Navigate", ["Overview", "Acoustic Analysis", "AI Diagnostics", "Live Monitoring", "Phone Monitoring", "Machine Monitoring", "Alerts & History", "About Project"], label_visibility="collapsed")
     st.divider()
     st.caption("Prototype mode · audio-first")
 
-{"Overview": overview, "Acoustic Analysis": acoustic_analysis, "AI Diagnostics": diagnostics, "Live Monitoring": live_monitoring, "Machine Monitoring": monitoring, "Alerts & History": alerts, "About Project": about}[page]()
+{"Overview": overview, "Acoustic Analysis": acoustic_analysis, "AI Diagnostics": diagnostics, "Live Monitoring": live_monitoring, "Phone Monitoring": phone_monitoring, "Machine Monitoring": monitoring, "Alerts & History": alerts, "About Project": about}[page]()

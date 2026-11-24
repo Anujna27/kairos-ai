@@ -4,3 +4,5 @@ __pycache__/
 models/*.joblib
 data/*.db
 data/live_waveform.json
+data/live_monitor.log
+data/phone_live_state.json
