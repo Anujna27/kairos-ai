@@ -179,6 +179,23 @@ The phone events will appear in the dashboard's **Phone Monitoring** and
 **Alerts & History** pages. Re-train the laptop model with representative
 healthy recordings before treating results as meaningful.
 
+The phone server and dashboard run at the same time as separate processes:
+
+```bash
+# Terminal 1: phone audio backend
+.venv/bin/python -m modules.phone_stream
+
+# Terminal 2: Streamlit dashboard
+.venv/bin/streamlit run app.py
+
+# Terminal 3: HTTPS tunnel for the phone
+ngrok http 8000
+```
+
+The dashboard reads the phone session state and SQLite events written by the
+FastAPI process. The **Phone Monitoring** page refreshes automatically while it
+is open, so the latest phone result appears there without a manual reload.
+
 ### Recommended demo
 
 1. Train the model from the healthy WAV recordings in `dataset/normal/`.

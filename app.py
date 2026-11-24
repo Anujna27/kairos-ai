@@ -353,6 +353,7 @@ def live_monitoring() -> None:
         st.info("No event database exists yet. Start monitoring to create it.")
 
 
+@st.fragment(run_every="1s")
 def phone_monitoring() -> None:
     st.title("Phone Live Monitoring")
     st.caption("Smartphone microphone → WebSocket → laptop model")
