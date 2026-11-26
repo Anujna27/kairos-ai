@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from fasthtml.common import *
-from monsterui.all import *
+from fasthtml.components import Uk_icon
+from monsterui.core import Theme
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -22,6 +23,17 @@ from modules.firebase_core import firebase_web_config
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "data" / "phone_live_state.json"
 DB_PATH = ROOT / "data" / "kairos_events.db"
+
+
+def UkIcon(icon: str, height: int | None = None, width: int | None = None, stroke_width: int | None = None, cls: str = "", **kwargs: Any) -> Any:
+    """Render the icon tag without importing MonsterUI's lxml-backed franken module."""
+    return Uk_icon(icon=icon, height=height, width=width, stroke_width=stroke_width, cls=cls, **kwargs)
+
+
+def Card(*content: Any, cls: str = "", **kwargs: Any) -> Any:
+    """Small local card helper matching the dashboard's existing class usage."""
+    classes = f"card {cls}".strip()
+    return Div(*content, cls=classes, **kwargs)
 
 custom_css = Style("""
 :root { --kairos-ink:#07111f; --kairos-cyan:#43d9e8; }
@@ -126,12 +138,12 @@ def layout(content: Any, active: str = "Overview") -> Any:
     firebase_config, _ = firebase_web_config()
     auth_script = Script(f"""
       import {{ initializeApp }} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-      import {{ getAuth, GoogleAuthProvider, browserLocalPersistence, onAuthStateChanged, setPersistence, signInWithPopup, signInWithRedirect, getRedirectResult }} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+      import {{ getAuth, GoogleAuthProvider, browserLocalPersistence, onAuthStateChanged, setPersistence, signInWithPopup, signInWithRedirect, getRedirectResult, signOut }} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
       const config={json.dumps(firebase_config or {})}, gate=document.getElementById('auth-gate'), shell=document.getElementById('app-shell'), authMessage=document.getElementById('auth-message');
       window.kairosIdToken='';
       window.kairosAuthReady=new Promise(async resolve=>{{
         if(!config.apiKey){{authMessage.textContent='Firebase web configuration is missing.';resolve(false);return}}
-        try{{const auth=getAuth(initializeApp(config));await setPersistence(auth,browserLocalPersistence);await getRedirectResult(auth);const show=async user=>{{if(!user){{gate.style.display='grid';shell.style.display='none';resolve(false);return}}window.kairosIdToken=await user.getIdToken();gate.style.display='none';shell.style.display='block';resolve(true)}};onAuthStateChanged(auth,show);document.addEventListener('click',async e=>{{if(e.target.closest('#google-login')){{try{{await signInWithPopup(auth,new GoogleAuthProvider())}}catch(err){{if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment'].includes(err.code))await signInWithRedirect(auth,new GoogleAuthProvider());else authMessage.textContent=err.message}}}}}})}}catch(err){{authMessage.textContent=err.message;resolve(false)}}
+        try{{const auth=getAuth(initializeApp(config));await setPersistence(auth,browserLocalPersistence);await getRedirectResult(auth);const show=async user=>{{if(!user){{gate.style.display='grid';shell.style.display='none';resolve(false);return}}window.kairosIdToken=await user.getIdToken();gate.style.display='none';shell.style.display='block';resolve(true)}};onAuthStateChanged(auth,show);document.addEventListener('click',async e=>{{if(e.target.closest('#google-login')){{try{{await signInWithPopup(auth,new GoogleAuthProvider())}}catch(err){{if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment'].includes(err.code))await signInWithRedirect(auth,new GoogleAuthProvider());else authMessage.textContent=err.message}}}}if(e.target.closest('#google-logout')){{await signOut(auth);window.kairosIdToken='';}}}})}}catch(err){{authMessage.textContent=err.message;resolve(false)}}
       }});
     """, type="module")
     return Html(
@@ -140,7 +152,7 @@ def layout(content: Any, active: str = "Overview") -> Any:
         """)),
         Body(
             Div(Div(Card(H2("KAIROS", cls="text-2xl font-bold"), P("Sign in to continue.", cls="text-muted-foreground"), P(id="auth-message", cls="text-error text-sm min-h-6"), Button("Continue with Google", id="google-login", cls="btn btn-primary w-full mt-4"), cls="auth-card p-8"), cls="auth-gate", id="auth-gate"), Div(
-                Div(Span("KAIROS", cls="brand-mark"), Button(UkIcon("sun", height=18, width=18), Span("Theme", cls="sr-only"), id="theme-toggle", aria_label="Switch theme", cls="btn btn-ghost btn-sm ml-auto"), cls="flex items-center py-3"),
+                Div(Span("KAIROS", cls="brand-mark"), Div(Button("Sign out", id="google-logout", cls="btn btn-ghost btn-sm"), Button(UkIcon("sun", height=18, width=18), Span("Theme", cls="sr-only"), id="theme-toggle", aria_label="Switch theme", cls="btn btn-ghost btn-sm ml-2"), cls="ml-auto"), cls="flex items-center py-3"),
                 Div(
                     Aside(H3("KAIROS", cls="text-xl font-bold mb-8"), *[A(UkIcon(icon, height=17, width=17), Span(label, cls="ml-2"), href=href, cls=f"kairos-nav-item btn btn-ghost justify-start w-full mb-1 {'btn-active' if label == active else ''}") for label, href, icon in links], cls="hidden md:block w-56"),
                     Main(content, cls="flex-1 min-w-0"),
@@ -236,15 +248,63 @@ def alerts_page() -> Any:
 def community_page() -> Any:
     config, missing = firebase_web_config()
     config_json = json.dumps(config or {})
-    return layout(Div(P("COMMUNITY", cls="eyebrow"), H1("Community", cls="text-4xl font-bold tracking-tight"), Div(id="community-root", cls="mt-8"), Script(f"""
-      const root=document.getElementById('community-root'), config={config_json};
-      let auth=null, token='';
-      const esc=s=>String(s??'').replace(/[&<>'\"]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}}[c]));
-      async function api(path, options={{}}) {{ const r=await fetch(path,{{...options,headers:{{'Content-Type':'application/json','Authorization':`Bearer ${{token}}`,...(options.headers||{{}})}}}}); const d=await r.json(); if(!r.ok) throw Error(d.error||d.detail||'Request failed'); return d; }}
-      async function render() {{ const qs=await api('/api/community/questions'); root.innerHTML=`<div class="flex justify-between items-center mb-5"><h2 class="text-xl font-bold">Questions</h2><button id="ask" class="btn btn-primary">Ask question</button></div><input id="search" class="input input-bordered w-full mb-5" placeholder="Search questions"><div id="list"></div>`; const draw=()=>{{const q=qs.filter(x=>!search.value||(`${{x.title}} ${{x.description}}`).toLowerCase().includes(search.value.toLowerCase()));list.innerHTML=q.length?q.map(x=>`<article class="card p-5 mb-3"><h3 class="font-bold">${{esc(x.title)}}</h3><p class="text-sm text-muted-foreground mt-2">${{esc(x.description)}}</p><div class="flex gap-3 mt-4"><button class="btn btn-sm" data-like="${{x.question_id}}">Likes ${{x.like_count}}</button><button class="btn btn-sm" data-reply="${{x.question_id}}">Reply</button><span class="text-sm text-muted-foreground">${{x.answer_count}} answers</span></div></article>`).join(''):'<p class="text-muted-foreground">No questions yet.</p>'; q.forEach(x=>{{}}); document.querySelectorAll('[data-like]').forEach(b=>b.onclick=async()=>{{await api(`/api/community/questions/${{b.dataset.like}}/like`,{{method:'POST'}});render()}}); document.querySelectorAll('[data-reply]').forEach(b=>b.onclick=()=>reply(b.dataset.reply)); search.oninput=draw; draw(); ask.onclick=()=>{{root.innerHTML=`<h2 class="text-xl font-bold mb-4">Ask a question</h2><input id="title" class="input input-bordered w-full mb-3" placeholder="Title"><textarea id="description" class="textarea textarea-bordered w-full mb-3" placeholder="Describe the machine or acoustic issue"></textarea><button id="post" class="btn btn-primary">Post question</button>`;post.onclick=async()=>{{try{{await api('/api/community/questions',{{method:'POST',body:JSON.stringify({{title:title.value,description:description.value}})}});render()}}catch(e){{alert(e.message)}}}}}}}}}}
-      async function reply(id) {{ const q=await api(`/api/community/questions/${{id}}`); root.innerHTML=`<button id="back" class="btn btn-ghost mb-4">Back</button><h2 class="text-2xl font-bold">${{esc(q.title)}}</h2><p class="mt-3">${{esc(q.description)}}</p><div class="mt-6"><textarea id="answer" class="textarea textarea-bordered w-full" placeholder="Write a reply"></textarea><button id="send" class="btn btn-primary mt-3">Post reply</button></div><div class="mt-8">${{(q.answers||[]).map(a=>`<div class="border-b border-border py-3">${{esc(a.answer_text)}}</div>`).join('')}}</div>`;back.onclick=render;send.onclick=async()=>{{try{{await api(`/api/community/questions/${{id}}/answers`,{{method:'POST',body:JSON.stringify({{answer_text:answer.value}})}});reply(id)}}catch(e){{alert(e.message)}}}}}}
-      async function start() {{ const ready=await new Promise(resolve=>{{const wait=()=>window.kairosAuthReady?window.kairosAuthReady.then(resolve):setTimeout(wait,25);wait()}}); if(!ready){{root.innerHTML='<p class="text-error">Authentication is required.</p>';return}} token=window.kairosIdToken; render(); }} start().catch(e=>root.innerHTML=`<p class="text-error">${{esc(e.message)}}</p>`);
-    """, type="module")), "Community")
+    script = """
+      const root = document.getElementById('community-root');
+      const config = __FIREBASE_CONFIG__;
+      let token = '';
+      const esc = value => String(value ?? '').replace(/[&<>'\"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[character]));
+      async function api(path, options = {}) {
+        const response = await fetch(path, {...options, headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${token}`, ...(options.headers || {})}});
+        const data = await response.json();
+        if (!response.ok) throw Error(data.error || data.detail || 'Request failed');
+        return data;
+      }
+      function showError(error) { root.innerHTML = `<p class="text-error">${esc(error.message || error)}</p>`; }
+      async function render() {
+        const questions = await api('/api/community/questions');
+        root.innerHTML = `<div class="flex justify-between items-center mb-5"><h2 class="text-xl font-bold">Questions</h2><button id="ask" class="btn btn-primary">Ask question</button></div><input id="search" class="input input-bordered w-full mb-5" placeholder="Search questions"><div id="list"></div>`;
+        const askButton = root.querySelector('#ask');
+        const searchInput = root.querySelector('#search');
+        const list = root.querySelector('#list');
+        const draw = () => {
+          const query = searchInput.value.toLowerCase();
+          const filtered = questions.filter(question => !query || `${question.title} ${question.description}`.toLowerCase().includes(query));
+          list.innerHTML = filtered.length ? filtered.map(question => `<article class="card p-5 mb-3"><h3 class="font-bold">${esc(question.title)}</h3><p class="text-sm text-muted-foreground mt-2">${esc(question.description)}</p><div class="flex gap-3 mt-4"><button class="btn btn-sm" data-like="${question.question_id}">Likes ${question.like_count}</button><button class="btn btn-sm" data-reply="${question.question_id}">Reply</button><span class="text-sm text-muted-foreground">${question.answer_count} answers</span></div></article>`).join('') : '<p class="text-muted-foreground">No questions yet.</p>';
+          list.querySelectorAll('[data-like]').forEach(button => button.onclick = async () => { try { await api(`/api/community/questions/${button.dataset.like}/like`, {method:'POST'}); await render(); } catch (error) { showError(error); } });
+          list.querySelectorAll('[data-reply]').forEach(button => button.onclick = () => reply(button.dataset.reply));
+        };
+        searchInput.oninput = draw;
+        askButton.onclick = showAskForm;
+        draw();
+      }
+      function showAskForm() {
+        root.innerHTML = `<h2 class="text-xl font-bold mb-4">Ask a question</h2><input id="title" class="input input-bordered w-full mb-3" placeholder="Title"><textarea id="description" class="textarea textarea-bordered w-full mb-3" placeholder="Describe the machine or acoustic issue"></textarea><div class="flex gap-3"><button id="post" class="btn btn-primary">Post question</button><button id="cancel" class="btn btn-ghost">Cancel</button></div>`;
+        const titleInput = root.querySelector('#title');
+        const descriptionInput = root.querySelector('#description');
+        root.querySelector('#cancel').onclick = render;
+        root.querySelector('#post').onclick = async () => {
+          try { await api('/api/community/questions', {method:'POST', body:JSON.stringify({title:titleInput.value, description:descriptionInput.value})}); await render(); }
+          catch (error) { showError(error); }
+        };
+      }
+      async function reply(id) {
+        const question = await api(`/api/community/questions/${id}`);
+        root.innerHTML = `<button id="back" class="btn btn-ghost mb-4">Back</button><h2 class="text-2xl font-bold">${esc(question.title)}</h2><p class="mt-3">${esc(question.description)}</p><div class="mt-6"><textarea id="answer" class="textarea textarea-bordered w-full" placeholder="Write a reply"></textarea><button id="send" class="btn btn-primary mt-3">Post reply</button></div><div class="mt-8">${(question.answers || []).map(answer => `<div class="border-b border-border py-3">${esc(answer.answer_text)}</div>`).join('')}</div>`;
+        root.querySelector('#back').onclick = render;
+        root.querySelector('#send').onclick = async () => {
+          try { await api(`/api/community/questions/${id}/answers`, {method:'POST', body:JSON.stringify({answer_text:root.querySelector('#answer').value})}); await reply(id); }
+          catch (error) { showError(error); }
+        };
+      }
+      async function start() {
+        const ready = await new Promise(resolve => { const wait = () => window.kairosAuthReady ? window.kairosAuthReady.then(resolve) : setTimeout(wait, 25); wait(); });
+        if (!ready) { root.innerHTML = '<p class="text-error">Authentication is required.</p>'; return; }
+        token = window.kairosIdToken;
+        try { await render(); } catch (error) { showError(error); }
+      }
+      start();
+    """.replace("__FIREBASE_CONFIG__", config_json)
+    return layout(Div(P("COMMUNITY", cls="eyebrow"), H1("Community", cls="text-4xl font-bold tracking-tight"), Div(id="community-root", cls="mt-8"), Script(script, type="module")), "Community")
 
 
 @rt("/partials/phone-live")
@@ -258,4 +318,8 @@ def favicon() -> Response:
 
 
 if __name__ == "__main__":
-    serve()
+    # FastHTML's development reloader spawns a second process. On Windows
+    # that extra process can fail under restrictive application policies, so
+    # direct startup is single-process by default. Opt in with KAIROS_RELOAD=true.
+    reload_enabled = os.getenv("KAIROS_RELOAD", "false" if os.name == "nt" else "true").lower() in {"1", "true", "yes", "on"}
+    serve(reload=reload_enabled)
