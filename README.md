@@ -63,6 +63,88 @@ If PowerShell blocks activation, use the interpreter directly:
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
+## Linux installation
+
+On Ubuntu/Debian, install the system packages commonly needed for audio
+decoding, microphone capture, and scientific Python wheels:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip build-essential \
+  libsndfile1 portaudio19-dev
+```
+
+Create and activate the project virtual environment:
+
+```bash
+cd /path/to/kairos-ai
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Copy and edit the environment template before starting an authenticated
+dashboard:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+$EDITOR .env
+```
+
+Keep Firebase Admin credentials outside the repository when possible. For
+example, configure a protected service-account file path in `.env`:
+
+```text
+FIREBASE_ADMIN_CREDENTIALS_FILE=/etc/kairos/firebase-adminsdk.json
+```
+
+The file should be readable only by the account running KAIROS-AI:
+
+```bash
+chmod 600 /etc/kairos/firebase-adminsdk.json
+```
+
+## Starting on Linux
+
+With `.venv` activated, run the primary FastHTML dashboard:
+
+```bash
+python dashboard.py
+```
+
+Open <http://localhost:5001>. The equivalent module command is:
+
+```bash
+python -m dashboard
+```
+
+Run the legacy Streamlit dashboard with:
+
+```bash
+streamlit run app.py
+```
+
+It is available at <http://localhost:8501>. Run the phone microphone server in
+a separate terminal, with the virtual environment activated:
+
+```bash
+python -m modules.phone_stream
+```
+
+The phone server listens on `KAIROS_PHONE_PORT` or port `8000`. For a remote
+phone, use an HTTPS reverse proxy or tunnel because browser microphone access
+normally requires a secure origin. The Community API is already mounted inside
+the FastHTML dashboard at `/api/community`; it does not require a second
+process.
+
+For a long-running Linux deployment, use a process supervisor such as systemd,
+Supervisor, or Docker rather than leaving a shell session open. Set the working
+directory to the repository root so the local `data/`, `models/`, and `.env`
+paths resolve consistently. Bind behind an HTTPS reverse proxy before exposing
+the dashboard outside localhost.
+
 ## Configuration
 
 Copy `.env.example` to `.env`. `.env` is ignored by Git and must never be
