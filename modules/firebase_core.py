@@ -13,10 +13,12 @@ try:
 except ImportError:
     load_dotenv = None
 
+_env_file = Path(__file__).resolve().parents[1] / ".env"
 if load_dotenv is not None:
-    load_dotenv()
+    # Resolve the project configuration independently of the directory from
+    # which uvicorn, Streamlit, or a process manager was launched.
+    load_dotenv(dotenv_path=_env_file)
 else:
-    _env_file = Path(__file__).resolve().parents[1] / ".env"
     if _env_file.is_file():
         for line in _env_file.read_text(encoding="utf-8").splitlines():
             line = line.strip()
