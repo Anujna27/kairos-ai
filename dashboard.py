@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 from fasthtml.common import *
 from monsterui.all import *
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from modules.alerts import EmailConfig, EventStore
 from modules.anomaly_detection import MODEL_PATH, model_status, train_from_directory
+from modules.community_filter import redact_profanity, validate_submission
+from modules.community_store import CommunityAuthorizationError, CommunityStore
+from modules.firebase_auth import FirebaseConfigurationError, InvalidFirebaseToken, firebase_web_config, verify_id_token
 
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "data" / "phone_live_state.json"
@@ -62,6 +68,16 @@ def events(limit: int = 30) -> list[dict[str, Any]]:
         return store.recent(limit)
     finally:
         store.close()
+
+
+def community_user(request: Request) -> dict[str, str]:
+    header = request.headers.get("authorization", "")
+    token = header.removeprefix("Bearer ").strip()
+    return verify_id_token(token)
+
+
+def community_json_error(message: str, status: int = 400) -> JSONResponse:
+    return JSONResponse({"error": message}, status_code=status)
 
 
 def status_badge(status: str) -> Span:
@@ -197,6 +213,71 @@ def alerts_page() -> Any:
     except ValueError as exc:
         details = Div(status_badge("NOT CONFIGURED"), P(str(exc), cls="text-sm text-muted-foreground mt-4"))
     return layout(Div(P("ALERT SETTINGS", cls="eyebrow"), H1("Alert settings", cls="text-4xl font-bold tracking-tight"), Card(H2("Email notifications", cls="text-xl font-bold"), details, P("SMTP values are read from environment variables. Passwords are never displayed in this dashboard.", cls="text-sm text-muted-foreground mt-6"), cls="p-6 mt-8"), Card(H3("Supported configuration", cls="font-bold"), Ul(Li("One to three recipient addresses are supported."), Li("Separate recipients with commas or semicolons in ALERT_TO."), Li("SMTP_PASSWORD should be an app password where required by the provider."), cls="list-disc ml-5 space-y-2"), cls="p-6 mt-4")), "Alert settings")
+
+
+@rt("/community")
+def community_page() -> Any:
+    config, missing = firebase_web_config()
+    config_json = json.dumps(config or {})
+    return layout(Div(P("COMMUNITY", cls="eyebrow"), H1("Community", cls="text-4xl font-bold tracking-tight"), Div(id="community-root", cls="mt-8"), Script(f"""
+      const root=document.getElementById('community-root'), config={config_json};
+      let auth=null, token='';
+      const esc=s=>String(s??'').replace(/[&<>'\"]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}}[c]));
+      async function api(path, options={{}}) {{ const r=await fetch(path,{{...options,headers:{{'Content-Type':'application/json','Authorization':`Bearer ${{token}}`,...(options.headers||{{}})}}}}); const d=await r.json(); if(!r.ok) throw Error(d.error||'Request failed'); return d; }}
+      async function render() {{ const qs=await api('/api/community/questions'); root.innerHTML=`<div class="flex justify-between items-center mb-5"><h2 class="text-xl font-bold">Questions</h2><button id="ask" class="btn btn-primary">Ask question</button></div><input id="search" class="input input-bordered w-full mb-5" placeholder="Search questions"><div id="list"></div>`; const draw=()=>{{const q=qs.filter(x=>!search.value||(`${{x.title}} ${{x.description}}`).toLowerCase().includes(search.value.toLowerCase()));list.innerHTML=q.length?q.map(x=>`<article class="card p-5 mb-3"><h3 class="font-bold">${{esc(x.title)}}</h3><p class="text-sm text-muted-foreground mt-2">${{esc(x.description)}}</p><div class="flex gap-3 mt-4"><button class="btn btn-sm" data-like="${{x.question_id}}">Likes ${{x.like_count}}</button><button class="btn btn-sm" data-reply="${{x.question_id}}">Reply</button><span class="text-sm text-muted-foreground">${{x.answer_count}} answers</span></div></article>`).join(''):'<p class="text-muted-foreground">No questions yet.</p>'; q.forEach(x=>{{}}); document.querySelectorAll('[data-like]').forEach(b=>b.onclick=async()=>{{await api(`/api/community/questions/${{b.dataset.like}}/like`,{{method:'POST'}});render()}}); document.querySelectorAll('[data-reply]').forEach(b=>b.onclick=()=>reply(b.dataset.reply)); search.oninput=draw; draw(); ask.onclick=()=>{{root.innerHTML=`<h2 class="text-xl font-bold mb-4">Ask a question</h2><input id="title" class="input input-bordered w-full mb-3" placeholder="Title"><textarea id="description" class="textarea textarea-bordered w-full mb-3" placeholder="Describe the machine or acoustic issue"></textarea><button id="post" class="btn btn-primary">Post question</button>`;post.onclick=async()=>{{try{{await api('/api/community/questions',{{method:'POST',body:JSON.stringify({{title:title.value,description:description.value}})}});render()}}catch(e){{alert(e.message)}}}}}}}}}}
+      async function reply(id) {{ const q=await api(`/api/community/questions/${{id}}`); root.innerHTML=`<button id="back" class="btn btn-ghost mb-4">Back</button><h2 class="text-2xl font-bold">${{esc(q.title)}}</h2><p class="mt-3">${{esc(q.description)}}</p><div class="mt-6"><textarea id="answer" class="textarea textarea-bordered w-full" placeholder="Write a reply"></textarea><button id="send" class="btn btn-primary mt-3">Post reply</button></div><div class="mt-8">${{(q.answers||[]).map(a=>`<div class="border-b border-border py-3">${{esc(a.answer_text)}}</div>`).join('')}}</div>`;back.onclick=render;send.onclick=async()=>{{try{{await api(`/api/community/questions/${{id}}/answers`,{{method:'POST',body:JSON.stringify({{answer_text:answer.value}})}});reply(id)}}catch(e){{alert(e.message)}}}}}}
+      async function start() {{ if(!config.apiKey){{root.innerHTML='<p class="text-error">Firebase web configuration is missing.</p>';return}} const f=await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js'), a=await import('https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js'); auth=a.getAuth(f.initializeApp(config)); const provider=new a.GoogleAuthProvider(); if(!auth.currentUser){{root.innerHTML='<button id="signin" class="btn btn-primary">Sign in with Google</button>';signin.onclick=()=>a.signInWithPopup(auth,provider);a.onAuthStateChanged(auth,async u=>{{if(u){{token=await u.getIdToken();render()}}}})}} else{{token=await auth.currentUser.getIdToken();render()}} }} start().catch(e=>root.innerHTML=`<p class="text-error">${{esc(e.message)}}</p>`);
+    """, type="module")), "Community")
+
+
+@rt("/api/community/questions")
+def community_questions(request: Request, data: dict[str, Any] | None = None) -> Any:
+    try:
+        user = community_user(request)
+        store = CommunityStore(ROOT / "data" / "kairos_community.db")
+        try:
+            if data is not None:
+                error = validate_submission(str(data.get("title", "")), "Question title") or validate_submission(str(data.get("description", "")), "Description")
+                if error: return community_json_error(error)
+                store.create_question(user["uid"], redact_profanity(str(data["title"])), redact_profanity(str(data["description"])))
+                return JSONResponse({"ok": True})
+            return JSONResponse(store.list_questions())
+        finally: store.close()
+    except (InvalidFirebaseToken, FirebaseConfigurationError) as exc: return community_json_error(str(exc), 401)
+
+
+@rt("/api/community/questions/{question_id}")
+def community_question(request: Request, question_id: int) -> Any:
+    try:
+        community_user(request); store=CommunityStore(ROOT / "data" / "kairos_community.db")
+        try:
+            question=store.get_question(question_id) or {}
+            question["answers"]=store.list_answers(question_id)
+            return JSONResponse(question)
+        finally: store.close()
+    except (InvalidFirebaseToken, FirebaseConfigurationError) as exc: return community_json_error(str(exc), 401)
+
+
+@rt("/api/community/questions/{question_id}/answers", methods=["POST"])
+def community_answer(request: Request, question_id: int, data: dict[str, Any]) -> Any:
+    try:
+        user=community_user(request); text=str(data.get("answer_text", "")); error=validate_submission(text, "Answer")
+        if error: return community_json_error(error)
+        store=CommunityStore(ROOT / "data" / "kairos_community.db")
+        try: store.create_answer(question_id, user["uid"], redact_profanity(text))
+        finally: store.close()
+        return JSONResponse({"ok": True})
+    except (InvalidFirebaseToken, FirebaseConfigurationError) as exc: return community_json_error(str(exc), 401)
+
+
+@rt("/api/community/questions/{question_id}/like", methods=["POST"])
+def community_like(request: Request, question_id: int) -> Any:
+    try:
+        user=community_user(request); store=CommunityStore(ROOT / "data" / "kairos_community.db")
+        try: liked=store.toggle_like(question_id, user["uid"])
+        finally: store.close()
+        return JSONResponse({"liked": liked})
+    except (InvalidFirebaseToken, FirebaseConfigurationError, CommunityAuthorizationError, ValueError) as exc: return community_json_error(str(exc), 400)
 
 
 @rt("/partials/phone-live")
