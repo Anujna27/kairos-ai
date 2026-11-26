@@ -16,9 +16,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from modules.alerts import EmailConfig, EventStore
 from modules.anomaly_detection import MODEL_PATH, model_status, train_from_directory
-from modules.community_filter import redact_profanity, validate_submission
-from modules.community_store import CommunityAuthorizationError, CommunityStore
-from modules.firebase_auth import FirebaseConfigurationError, InvalidFirebaseToken, firebase_web_config, verify_id_token
+from modules.community_api import build_community_api
+from modules.firebase_core import firebase_web_config
 
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "data" / "phone_live_state.json"
@@ -71,16 +70,6 @@ def events(limit: int = 30) -> list[dict[str, Any]]:
         return store.recent(limit)
     finally:
         store.close()
-
-
-def community_user(request: Request) -> dict[str, str]:
-    header = request.headers.get("authorization", "")
-    token = header.removeprefix("Bearer ").strip()
-    return verify_id_token(token)
-
-
-def community_json_error(message: str, status: int = 400) -> JSONResponse:
-    return JSONResponse({"error": message}, status_code=status)
 
 
 def status_badge(status: str) -> Span:
@@ -168,6 +157,7 @@ def layout(content: Any, active: str = "Overview") -> Any:
 
 
 app, rt = fast_app(hdrs=[])
+app.mount("/api/community", build_community_api(ROOT / "data" / "kairos_community.db"))
 
 
 async def firebase_popup_policy(request: Request, call_next: Any) -> Any:
@@ -250,61 +240,11 @@ def community_page() -> Any:
       const root=document.getElementById('community-root'), config={config_json};
       let auth=null, token='';
       const esc=s=>String(s??'').replace(/[&<>'\"]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}}[c]));
-      async function api(path, options={{}}) {{ const r=await fetch(path,{{...options,headers:{{'Content-Type':'application/json','Authorization':`Bearer ${{token}}`,...(options.headers||{{}})}}}}); const d=await r.json(); if(!r.ok) throw Error(d.error||'Request failed'); return d; }}
+      async function api(path, options={{}}) {{ const r=await fetch(path,{{...options,headers:{{'Content-Type':'application/json','Authorization':`Bearer ${{token}}`,...(options.headers||{{}})}}}}); const d=await r.json(); if(!r.ok) throw Error(d.error||d.detail||'Request failed'); return d; }}
       async function render() {{ const qs=await api('/api/community/questions'); root.innerHTML=`<div class="flex justify-between items-center mb-5"><h2 class="text-xl font-bold">Questions</h2><button id="ask" class="btn btn-primary">Ask question</button></div><input id="search" class="input input-bordered w-full mb-5" placeholder="Search questions"><div id="list"></div>`; const draw=()=>{{const q=qs.filter(x=>!search.value||(`${{x.title}} ${{x.description}}`).toLowerCase().includes(search.value.toLowerCase()));list.innerHTML=q.length?q.map(x=>`<article class="card p-5 mb-3"><h3 class="font-bold">${{esc(x.title)}}</h3><p class="text-sm text-muted-foreground mt-2">${{esc(x.description)}}</p><div class="flex gap-3 mt-4"><button class="btn btn-sm" data-like="${{x.question_id}}">Likes ${{x.like_count}}</button><button class="btn btn-sm" data-reply="${{x.question_id}}">Reply</button><span class="text-sm text-muted-foreground">${{x.answer_count}} answers</span></div></article>`).join(''):'<p class="text-muted-foreground">No questions yet.</p>'; q.forEach(x=>{{}}); document.querySelectorAll('[data-like]').forEach(b=>b.onclick=async()=>{{await api(`/api/community/questions/${{b.dataset.like}}/like`,{{method:'POST'}});render()}}); document.querySelectorAll('[data-reply]').forEach(b=>b.onclick=()=>reply(b.dataset.reply)); search.oninput=draw; draw(); ask.onclick=()=>{{root.innerHTML=`<h2 class="text-xl font-bold mb-4">Ask a question</h2><input id="title" class="input input-bordered w-full mb-3" placeholder="Title"><textarea id="description" class="textarea textarea-bordered w-full mb-3" placeholder="Describe the machine or acoustic issue"></textarea><button id="post" class="btn btn-primary">Post question</button>`;post.onclick=async()=>{{try{{await api('/api/community/questions',{{method:'POST',body:JSON.stringify({{title:title.value,description:description.value}})}});render()}}catch(e){{alert(e.message)}}}}}}}}}}
       async function reply(id) {{ const q=await api(`/api/community/questions/${{id}}`); root.innerHTML=`<button id="back" class="btn btn-ghost mb-4">Back</button><h2 class="text-2xl font-bold">${{esc(q.title)}}</h2><p class="mt-3">${{esc(q.description)}}</p><div class="mt-6"><textarea id="answer" class="textarea textarea-bordered w-full" placeholder="Write a reply"></textarea><button id="send" class="btn btn-primary mt-3">Post reply</button></div><div class="mt-8">${{(q.answers||[]).map(a=>`<div class="border-b border-border py-3">${{esc(a.answer_text)}}</div>`).join('')}}</div>`;back.onclick=render;send.onclick=async()=>{{try{{await api(`/api/community/questions/${{id}}/answers`,{{method:'POST',body:JSON.stringify({{answer_text:answer.value}})}});reply(id)}}catch(e){{alert(e.message)}}}}}}
       async function start() {{ const ready=await new Promise(resolve=>{{const wait=()=>window.kairosAuthReady?window.kairosAuthReady.then(resolve):setTimeout(wait,25);wait()}}); if(!ready){{root.innerHTML='<p class="text-error">Authentication is required.</p>';return}} token=window.kairosIdToken; render(); }} start().catch(e=>root.innerHTML=`<p class="text-error">${{esc(e.message)}}</p>`);
     """, type="module")), "Community")
-
-
-@rt("/api/community/questions")
-def community_questions(request: Request, data: dict[str, Any] | None = None) -> Any:
-    try:
-        user = community_user(request)
-        store = CommunityStore(ROOT / "data" / "kairos_community.db")
-        try:
-            if data is not None:
-                error = validate_submission(str(data.get("title", "")), "Question title") or validate_submission(str(data.get("description", "")), "Description")
-                if error: return community_json_error(error)
-                store.create_question(user["uid"], redact_profanity(str(data["title"])), redact_profanity(str(data["description"])))
-                return JSONResponse({"ok": True})
-            return JSONResponse(store.list_questions())
-        finally: store.close()
-    except (InvalidFirebaseToken, FirebaseConfigurationError) as exc: return community_json_error(str(exc), 401)
-
-
-@rt("/api/community/questions/{question_id}")
-def community_question(request: Request, question_id: int) -> Any:
-    try:
-        community_user(request); store=CommunityStore(ROOT / "data" / "kairos_community.db")
-        try:
-            question=store.get_question(question_id) or {}
-            question["answers"]=store.list_answers(question_id)
-            return JSONResponse(question)
-        finally: store.close()
-    except (InvalidFirebaseToken, FirebaseConfigurationError) as exc: return community_json_error(str(exc), 401)
-
-
-@rt("/api/community/questions/{question_id}/answers", methods=["POST"])
-def community_answer(request: Request, question_id: int, data: dict[str, Any]) -> Any:
-    try:
-        user=community_user(request); text=str(data.get("answer_text", "")); error=validate_submission(text, "Answer")
-        if error: return community_json_error(error)
-        store=CommunityStore(ROOT / "data" / "kairos_community.db")
-        try: store.create_answer(question_id, user["uid"], redact_profanity(text))
-        finally: store.close()
-        return JSONResponse({"ok": True})
-    except (InvalidFirebaseToken, FirebaseConfigurationError) as exc: return community_json_error(str(exc), 401)
-
-
-@rt("/api/community/questions/{question_id}/like", methods=["POST"])
-def community_like(request: Request, question_id: int) -> Any:
-    try:
-        user=community_user(request); store=CommunityStore(ROOT / "data" / "kairos_community.db")
-        try: liked=store.toggle_like(question_id, user["uid"])
-        finally: store.close()
-        return JSONResponse({"liked": liked})
-    except (InvalidFirebaseToken, FirebaseConfigurationError, CommunityAuthorizationError, ValueError) as exc: return community_json_error(str(exc), 400)
 
 
 @rt("/partials/phone-live")
