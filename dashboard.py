@@ -10,7 +10,7 @@ from typing import Any
 from fasthtml.common import *
 from monsterui.all import *
 
-from modules.alerts import EventStore
+from modules.alerts import EmailConfig, EventStore
 from modules.anomaly_detection import MODEL_PATH, model_status, train_from_directory
 
 ROOT = Path(__file__).resolve().parent
@@ -114,7 +114,7 @@ def phone_live_panel() -> Any:
 
 
 def layout(content: Any, active: str = "Overview") -> Any:
-    links = [("Overview", "/", "home"), ("AI diagnostics", "/ai", "activity"), ("Training", "/training", "settings"), ("Phone monitoring", "/phone", "mic"), ("Live events", "/events", "list")]
+    links = [("Overview", "/", "home"), ("AI diagnostics", "/ai", "activity"), ("Training", "/training", "settings"), ("Phone monitoring", "/phone", "mic"), ("Live events", "/events", "list"), ("Alert settings", "/alerts", "bell")]
     return Html(
         Head(Title(f"KAIROS · {active}"), *Theme.blue.headers(), custom_css, Script(src="https://unpkg.com/htmx.org@2.0.4"), Script("""
             (()=>{const root=document.documentElement;const key='kairos-theme';const saved=localStorage.getItem(key);if(saved==='light')root.classList.remove('dark');if(saved==='dark')root.classList.add('dark');document.addEventListener('click',e=>{const b=e.target.closest('#theme-toggle');if(!b)return;const dark=root.classList.toggle('dark');localStorage.setItem(key,dark?'dark':'light');b.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');});})();
@@ -182,6 +182,21 @@ def training_run() -> Any:
 @rt("/events")
 def events_page() -> Any:
     return layout(Div(P("LIVE EVENTS", cls="eyebrow"), H1("Live events", cls="text-4xl font-bold tracking-tight"), Div(event_table(events(200)), cls="card p-6 bg-card border border-border mt-8")), "Live events")
+
+
+@rt("/alerts")
+def alerts_page() -> Any:
+    try:
+        config = EmailConfig.from_environment()
+        details = Div(
+            status_badge("CONFIGURED"),
+            P(f"SMTP host: {config.host}:{config.port}", cls="mt-4"),
+            P(f"Recipients configured: {len(config.recipients)}", cls="text-sm text-muted-foreground"),
+            Ul(*[Li(address) for address in config.recipients], cls="list-disc ml-5 mt-3"),
+        )
+    except ValueError as exc:
+        details = Div(status_badge("NOT CONFIGURED"), P(str(exc), cls="text-sm text-muted-foreground mt-4"))
+    return layout(Div(P("ALERT SETTINGS", cls="eyebrow"), H1("Alert settings", cls="text-4xl font-bold tracking-tight"), Card(H2("Email notifications", cls="text-xl font-bold"), details, P("SMTP values are read from environment variables. Passwords are never displayed in this dashboard.", cls="text-sm text-muted-foreground mt-6"), cls="p-6 mt-8"), Card(H3("Supported configuration", cls="font-bold"), Ul(Li("One to three recipient addresses are supported."), Li("Separate recipients with commas or semicolons in ALERT_TO."), Li("SMTP_PASSWORD should be an app password where required by the provider."), cls="list-disc ml-5 space-y-2"), cls="p-6 mt-4")), "Alert settings")
 
 
 @rt("/partials/phone-live")
