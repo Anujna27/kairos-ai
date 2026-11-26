@@ -3,29 +3,340 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#09131f">
   <title>KAIROS Phone Monitor</title>
   <style>
-    body{font-family:system-ui,sans-serif;background:#07111f;color:#e8f1f7;max-width:720px;margin:auto;padding:24px}
-    button,input{font:inherit;padding:12px;border-radius:8px;border:1px solid #345;background:#102338;color:inherit;margin:4px 0}
-    button{cursor:pointer;background:#176b78}.stop{background:#8e3145}.card{background:#0d1b2d;border:1px solid #20354d;border-radius:12px;padding:16px;margin:12px 0}
-    #status{font-weight:700}.normal{color:#48d597}.anomaly{color:#ff647c}canvas{width:100%;height:180px;background:#081727;border-radius:8px}
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #09131f;
+      color: #edf5f8;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --muted: #93a7b7;
+      --line: rgba(164, 196, 213, .13);
+      --aqua: #74f0d8;
+      --surface: #101e2c;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      padding: 28px 18px 40px;
+      background:
+        radial-gradient(ellipse at 50% -15%, rgba(35, 178, 162, .2), transparent 48%),
+        radial-gradient(circle at 100% 60%, rgba(53, 94, 160, .08), transparent 35%), #08111b;
+    }
+    main { width: min(100%, 580px); margin: 0 auto; }
+    .topbar { display: flex; align-items: center; gap: 12px; margin: 4px 2px 32px; }
+    .brand-mark {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      color: var(--aqua);
+      border: 1px solid rgba(81, 224, 208, .28);
+      border-radius: 15px;
+      background: linear-gradient(145deg, rgba(44, 161, 151, .2), rgba(19, 53, 71, .36));
+      box-shadow: inset 0 1px rgba(255,255,255,.08), 0 8px 24px rgba(0,0,0,.18);
+    }
+    .brand-name { font-size: 13px; font-weight: 750; letter-spacing: .16em; }
+    .brand-caption { margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .hero { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 0 2px 25px; }
+    .hero-copy { min-width: 0; }
+    .eyebrow { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--aqua); font-size: 10px; font-weight: 800; letter-spacing: .17em; text-transform: uppercase; }
+    .eyebrow::before { width: 17px; height: 1px; content: ""; background: var(--aqua); }
+    h1 { max-width: 390px; margin: 0; font-size: clamp(30px, 8vw, 42px); line-height: 1.03; letter-spacing: -.05em; }
+    .intro { max-width: 355px; margin: 11px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    .mic-orbit { position: relative; display: grid; width: 96px; height: 96px; flex: 0 0 auto; place-items: center; color: var(--aqua); border: 1px solid rgba(116, 240, 216, .19); border-radius: 50%; background: radial-gradient(circle, rgba(50, 166, 152, .16), rgba(15, 36, 48, .06) 66%); }
+    .mic-orbit::before, .mic-orbit::after { position: absolute; inset: 9px; border: 1px solid rgba(116, 240, 216, .12); border-radius: 50%; content: ""; }
+    .mic-orbit::after { inset: -7px; border-color: rgba(116, 240, 216, .07); }
+    .mic-orbit svg { filter: drop-shadow(0 0 12px rgba(116, 240, 216, .38)); }
+    body.is-monitoring .mic-orbit { animation: orbit-pulse 2.2s ease-out infinite; }
+    @keyframes orbit-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(116, 240, 216, .08); } 50% { box-shadow: 0 0 0 9px rgba(116, 240, 216, .025); } }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 21px;
+      background: linear-gradient(145deg, rgba(19, 37, 52, .96), rgba(12, 25, 38, .97));
+      box-shadow: 0 20px 55px rgba(0, 0, 0, .21), inset 0 1px rgba(255,255,255,.025);
+    }
+    .setup { padding: 21px; }
+    .section-title { margin: 0; font-size: 14px; font-weight: 750; letter-spacing: -.01em; }
+    .field-label { display: block; margin: 18px 0 8px; color: #b9c8d2; font-size: 12px; font-weight: 650; }
+    input {
+      width: 100%;
+      min-height: 50px;
+      padding: 0 14px;
+      border: 1px solid rgba(164, 196, 213, .2);
+      border-radius: 13px;
+      outline: none;
+      background: rgba(5, 15, 25, .48);
+      color: #edf5f8;
+      font: inherit;
+      font-size: 15px;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    input:focus { border-color: var(--aqua); box-shadow: 0 0 0 3px rgba(81, 224, 208, .13); }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    button {
+      display: inline-flex;
+      min-height: 50px;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      padding: 0 14px;
+      border: 1px solid transparent;
+      border-radius: 13px;
+      color: #062123;
+      background: linear-gradient(120deg, #8af5df, #4bd5c5 58%, #35b9ba);
+      box-shadow: 0 8px 25px rgba(39, 194, 184, .2), inset 0 1px rgba(255,255,255,.3);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 750;
+      cursor: pointer;
+      transition: transform .16s, filter .16s, opacity .16s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:not(:disabled):active { transform: scale(.98); }
+    button:not(:disabled):hover { filter: brightness(1.06); }
+    button:focus-visible { outline: 3px solid rgba(81, 224, 208, .4); outline-offset: 3px; }
+    button:disabled { cursor: not-allowed; opacity: .42; box-shadow: none; }
+    button.stop {
+      border-color: rgba(255, 126, 144, .25);
+      color: #ffb5c0;
+      background: linear-gradient(135deg, rgba(123, 45, 64, .23), rgba(73, 30, 45, .2));
+      box-shadow: none;
+    }
+    .connection {
+      display: flex;
+      min-height: 46px;
+      align-items: center;
+      gap: 10px;
+      margin-top: 15px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: linear-gradient(90deg, rgba(5, 15, 25, .54), rgba(9, 23, 34, .3));
+    }
+    .status-dot { order: -1; width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #7e91a0; box-shadow: 0 0 0 4px rgba(126, 145, 160, .1); transition: background .2s, box-shadow .2s; }
+    #status { margin: 0; color: #b8c7d1; font-size: 13px; font-weight: 600; line-height: 1.4; }
+    #status.normal { color: #75e7b6; }
+    #status.normal + .status-dot { background: #4cd99b; box-shadow: 0 0 0 4px rgba(76, 217, 155, .12); }
+    #status.anomaly { color: #ff8797; }
+    #status.anomaly + .status-dot { background: #ff647c; box-shadow: 0 0 0 4px rgba(255, 100, 124, .13); }
+    .visual-card { margin-top: 14px; padding: 19px 19px 17px; }
+    .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .live-tag { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 20px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+    .live-tag > span:first-child { width: 6px; height: 6px; border-radius: 50%; background: #718697; }
+    body.is-monitoring .live-tag > span:first-child { background: #62e5bd; box-shadow: 0 0 9px #62e5bd; animation: blink 1.3s ease-in-out infinite; }
+    @keyframes blink { 50% { opacity: .35; } }
+    canvas { display: block; width: 100%; height: 150px; margin-top: 15px; border: 1px solid rgba(164, 196, 213, .09); border-radius: 14px; background-color: rgba(5, 16, 26, .7); background-image: linear-gradient(rgba(128, 163, 178, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(128, 163, 178, .055) 1px, transparent 1px); background-size: 25px 25px; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 11px; }
+    .metric-tile { min-width: 0; padding: 11px 12px; border: 1px solid rgba(164, 196, 213, .09); border-radius: 12px; background: rgba(7, 18, 28, .42); }
+    .metric-label { display: block; overflow: hidden; color: #8297a7; font-size: 10px; font-weight: 700; letter-spacing: .045em; text-overflow: ellipsis; white-space: nowrap; }
+    .metric-value { display: block; margin-top: 5px; color: #e4f1f3; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.025em; }
+    .metrics-empty { grid-column: 1 / -1; margin: 0; padding: 12px 3px 3px; color: #899eac; font-size: 12px; line-height: 1.6; }
+    .hint { margin: 14px 4px 0; color: #718697; font-size: 11px; line-height: 1.55; text-align: center; }
+    @media (max-width: 380px) {
+      body { padding: 22px 14px 32px; }
+      .setup { padding: 17px; }
+      .actions { grid-template-columns: 1fr; }
+      .visual-card { padding: 16px; }
+      .mic-orbit { width: 72px; height: 72px; }
+      .mic-orbit svg { width: 24px; height: 24px; }
+      .metric-value { font-size: 15px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
   </style>
 </head>
 <body>
-  <h1>KAIROS Phone Monitor</h1>
-  <div class="card"><label>Machine ID <input id="machine" value="PHONE-01"></label><br>
-    <button id="start">Start monitoring</button><button id="stop" class="stop" disabled>Stop monitoring</button>
-    <p id="status">Disconnected</p></div>
-  <div class="card"><canvas id="wave" width="700" height="180"></canvas><div id="metrics">No result yet.</div></div>
+  <main>
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div><div class="brand-name">KAIROS</div><div class="brand-caption">Acoustic health monitor</div></div>
+    </header>
+
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Phone microphone</p>
+        <h1 id="page-title">Listen to your machine.</h1>
+        <p class="intro">Turn your phone into a live sensor and stream sound to your KAIROS monitor.</p>
+      </div>
+      <div class="mic-orbit" aria-hidden="true">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </div>
+    </section>
+
+    <section class="card setup" aria-labelledby="setup-title">
+      <h2 class="section-title" id="setup-title">Monitoring setup</h2>
+      <label class="field-label" for="machine">Machine ID</label>
+      <input id="machine" value="PHONE-01" autocomplete="off" spellcheck="false">
+      <div class="actions">
+        <button id="start" type="button">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="2"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span>Start monitoring</span>
+        </button>
+        <button id="stop" class="stop" type="button" disabled>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
+          <span>Stop monitoring</span>
+        </button>
+      </div>
+      <div class="connection" role="status" aria-live="polite">
+        <p id="status">Disconnected</p>
+        <span class="status-dot" aria-hidden="true"></span>
+      </div>
+    </section>
+
+    <section class="card visual-card" aria-labelledby="signal-title">
+      <div class="card-heading">
+        <h2 class="section-title" id="signal-title">Live audio signal</h2>
+      <div class="live-tag"><span aria-hidden="true"></span><span class="live-label">Standby</span></div>
+      </div>
+      <canvas id="wave" width="700" height="180" aria-label="Live audio waveform"></canvas>
+      <div id="metrics" class="metrics-grid" aria-live="polite"><p class="metrics-empty">Your signal measurements will appear here after the first analysis.</p></div>
+    </section>
+    <p class="hint">Keep this page open while monitoring. Your phone may ask for microphone permission.</p>
+  </main>
+
   <script>
     let ws, audioContext, source, processor, stream, lastResult=null;
     const startButton=document.getElementById('start'), stopButton=document.getElementById('stop'), machineInput=document.getElementById('machine');
-    const status = document.getElementById('status'), metrics = document.getElementById('metrics');
-    const canvas = document.getElementById('wave'), ctx = canvas.getContext('2d');
-    function draw(samples){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#43d9e8';ctx.beginPath();samples.forEach((v,i)=>{let x=i*canvas.width/(samples.length-1),y=canvas.height/2-v*canvas.height*.45;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}
-    function pcm16(input){let out=new ArrayBuffer(input.length*2),view=new DataView(out);for(let i=0;i<input.length;i++){let v=Math.max(-1,Math.min(1,input[i]));view.setInt16(i*2,v<0?v*32768:v*32767,true)}return out}
-    startButton.onclick=async()=>{try{if(!window.isSecureContext&&!['localhost','127.0.0.1'].includes(location.hostname)){throw new Error('Microphone access requires HTTPS. Open this page through an HTTPS tunnel such as ngrok, not the laptop IP over HTTP.')}if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){throw new Error('This browser does not expose microphone access. Use current Chrome on Android or Safari on iOS over HTTPS.')}lastResult=null;stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});audioContext=new AudioContext();source=audioContext.createMediaStreamSource(stream);processor=audioContext.createScriptProcessor(4096,1,1);let protocol=location.protocol==='https:'?'wss://':'ws://';ws=new WebSocket(`${protocol}${location.host}/ws/audio`);ws.binaryType='arraybuffer';ws.onopen=()=>{ws.send(JSON.stringify({sample_rate:audioContext.sampleRate,channels:1,machine_id:machineInput.value}));status.textContent='Connecting…'};ws.onerror=()=>{status.textContent='WebSocket connection failed';metrics.textContent='Check that the FastAPI server is running and that this page came from the same HTTPS tunnel.'};ws.onclose=()=>{if(!stopButton.disabled)status.textContent='WebSocket disconnected'};ws.onmessage=e=>{let m=JSON.parse(e.data);if(m.type==='ready')status.textContent='Connected · streaming';if(m.type==='buffering')status.textContent='Connected · buffering audio';if(m.type==='error'){status.textContent='Audio processing error';metrics.textContent=m.message||'The server rejected an audio chunk.'}if(m.type==='result'){lastResult=m;status.textContent='Connected · '+m.status;status.className=m.is_anomaly?'anomaly':'normal';metrics.textContent=`Result: ${m.status} · RMS ${m.rms.toFixed(4)} · Peak ${m.peak.toFixed(4)} · Dominant frequency ${m.dominant_frequency.toFixed(1)} Hz · Anomaly score ${m.anomaly_score.toFixed(4)}`}};processor.onaudioprocess=e=>{if(ws&&ws.readyState===1){let data=e.inputBuffer.getChannelData(0);draw(data);ws.send(pcm16(data))}};source.connect(processor);processor.connect(audioContext.destination);startButton.disabled=true;stopButton.disabled=false}catch(e){status.textContent='Microphone error: '+e.message;metrics.textContent='Use HTTPS and grant microphone permission, then reload the page.'}};
-    stopButton.onclick=async()=>{if(processor){processor.onaudioprocess=null;processor.disconnect();processor=null}if(source){source.disconnect();source=null}if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}if(ws){ws.onclose=null;ws.close(1000,'user stopped monitoring');ws=null}if(audioContext){await audioContext.close();audioContext=null}let finalLabel=lastResult?lastResult.status:'NO RESULT';status.textContent='Stopped · final result: '+finalLabel;status.className=lastResult&&lastResult.is_anomaly?'anomaly':lastResult?'normal':'';if(lastResult){metrics.textContent=`Final result: ${lastResult.status} · RMS ${lastResult.rms.toFixed(4)} · Peak ${lastResult.peak.toFixed(4)} · Dominant frequency ${lastResult.dominant_frequency.toFixed(1)} Hz · Anomaly score ${lastResult.anomaly_score.toFixed(4)}`}else{metrics.textContent='Monitoring stopped before the first model result was available.'}startButton.disabled=false;stopButton.disabled=true};
+    const status=document.getElementById('status'), metrics=document.getElementById('metrics');
+    const liveLabel=document.querySelector('.live-label');
+    const canvas=document.getElementById('wave'), ctx=canvas.getContext('2d');
+
+    function setStatus(message, tone='') {
+      status.textContent=message;
+      status.className=tone;
+    }
+    function showMessage(message) {
+      metrics.replaceChildren();
+      const note=document.createElement('p');
+      note.className='metrics-empty';
+      note.textContent=message;
+      metrics.append(note);
+    }
+    function showMetrics(result) {
+      const values=[
+        ['RMS energy', result.rms.toFixed(4)],
+        ['Peak amplitude', result.peak.toFixed(4)],
+        ['Dominant frequency', `${result.dominant_frequency.toFixed(1)} Hz`],
+        ['Anomaly score', result.anomaly_score.toFixed(4)],
+      ];
+      metrics.replaceChildren();
+      values.forEach(([label,value])=>{
+        const tile=document.createElement('div');
+        tile.className='metric-tile';
+        const name=document.createElement('span');
+        name.className='metric-label';
+        name.textContent=label;
+        const reading=document.createElement('strong');
+        reading.className='metric-value';
+        reading.textContent=value;
+        tile.append(name,reading);
+        metrics.append(tile);
+      });
+    }
+    function draw(samples) {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.strokeStyle='#74f0d8';
+      ctx.lineWidth=2.2;
+      ctx.shadowColor='rgba(116,240,216,.5)';
+      ctx.shadowBlur=8;
+      ctx.beginPath();
+      samples.forEach((value,index)=>{
+        const x=index*canvas.width/(samples.length-1);
+        const y=canvas.height/2-value*canvas.height*.45;
+        index ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+      });
+      ctx.stroke();
+      ctx.shadowBlur=0;
+    }
+    function pcm16(input) {
+      const out=new ArrayBuffer(input.length*2), view=new DataView(out);
+      for(let i=0;i<input.length;i++) {
+        const value=Math.max(-1,Math.min(1,input[i]));
+        view.setInt16(i*2,value<0?value*32768:value*32767,true);
+      }
+      return out;
+    }
+
+    startButton.onclick=async()=>{
+      try {
+        if(!window.isSecureContext&&!['localhost','127.0.0.1'].includes(location.hostname)) {
+          throw new Error('Microphone access requires HTTPS. Open this page through an HTTPS tunnel such as ngrok, not the laptop IP over HTTP.');
+        }
+        if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) {
+          throw new Error('This browser does not expose microphone access. Use current Chrome on Android or Safari on iOS over HTTPS.');
+        }
+        lastResult=null;
+        stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+        audioContext=new AudioContext();
+        source=audioContext.createMediaStreamSource(stream);
+        processor=audioContext.createScriptProcessor(4096,1,1);
+        const protocol=location.protocol==='https:'?'wss://':'ws://';
+        ws=new WebSocket(`${protocol}${location.host}/ws/audio`);
+        ws.binaryType='arraybuffer';
+        ws.onopen=()=>{
+          ws.send(JSON.stringify({sample_rate:audioContext.sampleRate,channels:1,machine_id:machineInput.value}));
+          setStatus('Connecting…');
+        };
+        ws.onerror=()=>{
+          setStatus('WebSocket connection failed');
+          showMessage('Check that the phone server is running and that this page came from the same HTTPS tunnel.');
+        };
+        ws.onclose=()=>{if(!stopButton.disabled)setStatus('WebSocket disconnected');};
+        ws.onmessage=event=>{
+          const message=JSON.parse(event.data);
+          if(message.type==='ready') setStatus('Connected · streaming');
+          if(message.type==='buffering') setStatus('Connected · buffering audio');
+          if(message.type==='error') {
+            setStatus('Audio processing error','anomaly');
+            showMessage(message.message||'The server rejected an audio chunk.');
+          }
+          if(message.type==='result') {
+            lastResult=message;
+            setStatus(`Connected · ${message.status}`,message.is_anomaly?'anomaly':'normal');
+            showMetrics(message);
+          }
+        };
+        processor.onaudioprocess=event=>{
+          if(ws&&ws.readyState===1) {
+            const data=event.inputBuffer.getChannelData(0);
+            draw(data);
+            ws.send(pcm16(data));
+          }
+        };
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        document.body.classList.add('is-monitoring');
+        liveLabel.textContent='Live';
+        startButton.disabled=true;
+        stopButton.disabled=false;
+      } catch(error) {
+        setStatus(`Microphone error: ${error.message}`,'anomaly');
+        showMessage('Use HTTPS and grant microphone permission, then reload the page.');
+      }
+    };
+
+    stopButton.onclick=async()=>{
+      if(processor){processor.onaudioprocess=null;processor.disconnect();processor=null;}
+      if(source){source.disconnect();source=null;}
+      if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}
+      if(ws){ws.onclose=null;ws.close(1000,'user stopped monitoring');ws=null;}
+      if(audioContext){await audioContext.close();audioContext=null;}
+      document.body.classList.remove('is-monitoring');
+      liveLabel.textContent='Standby';
+      const finalLabel=lastResult?lastResult.status:'NO RESULT';
+      setStatus(`Stopped · final result: ${finalLabel}`,lastResult?(lastResult.is_anomaly?'anomaly':'normal'):'');
+      if(lastResult) showMetrics(lastResult);
+      else showMessage('Monitoring stopped before the first model result was available.');
+      startButton.disabled=false;
+      stopButton.disabled=true;
+    };
   </script>
 </body>
 </html>
