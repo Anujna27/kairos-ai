@@ -148,7 +148,7 @@ def layout(content: Any, active: str = "Overview") -> Any:
     return Html(
         Head(Title(f"KAIROS · {active}"), *Theme.blue.headers(), custom_css, Script(src="https://unpkg.com/htmx.org@2.0.4"), Script("""
             (()=>{const root=document.documentElement;const key='kairos-theme';const saved=localStorage.getItem(key);if(saved==='light')root.classList.remove('dark');if(saved==='dark')root.classList.add('dark');document.addEventListener('click',e=>{const b=e.target.closest('#theme-toggle');if(!b)return;const dark=root.classList.toggle('dark');localStorage.setItem(key,dark?'dark':'light');b.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');});})();
-        """), auth_script),
+        """)),
         Body(
             Div(Div(Card(H2("KAIROS", cls="text-2xl font-bold"), P("Sign in to continue.", cls="text-muted-foreground"), P(id="auth-message", cls="text-error text-sm min-h-6"), Button("Continue with Google", id="google-login", cls="btn btn-primary w-full mt-4"), cls="auth-card p-8"), cls="auth-gate", id="auth-gate"), Div(
                 Div(Span("KAIROS", cls="brand-mark"), Button(UkIcon("sun", height=18, width=18), Span("Theme", cls="sr-only"), id="theme-toggle", aria_label="Switch theme", cls="btn btn-ghost btn-sm ml-auto"), cls="flex items-center py-3"),
@@ -158,7 +158,8 @@ def layout(content: Any, active: str = "Overview") -> Any:
                     cls="flex gap-8",
                 ),
                 cls="kairos-shell",
-            ), id="app-shell", style="display:none"),
+            ), id="app-shell", hidden=True),
+            auth_script,
         ),
     )
 
