@@ -11,6 +11,10 @@ abnormal `id_00` recordings are kept separately for evaluation. With this small
 sample set, the initial evaluation flagged 12 of 20 abnormal clips; this is a
 development check, not a production accuracy claim.
 
+Live monitoring can notify up to three email recipients. Enter the SMTP
+settings and one to three recipient addresses on the Live Monitoring page;
+the same alert is delivered to each address.
+
 The trained model stays on the Linux laptop. A phone acts only as a wireless
 microphone and browser display: audio is sent to the laptop over WebSocket, the
 laptop extracts the exact training features and loads

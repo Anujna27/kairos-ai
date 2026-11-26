@@ -280,7 +280,15 @@ def live_monitoring() -> None:
                 "SMTP_USERNAME": st.text_input("SMTP username"),
                 "SMTP_PASSWORD": st.text_input("SMTP password", type="password"),
                 "ALERT_FROM": st.text_input("From address"),
-                "ALERT_TO": st.text_input("To address"),
+                "ALERT_TO": ",".join(
+                    address.strip()
+                    for address in [
+                        st.text_input("Recipient 1"),
+                        st.text_input("Recipient 2 (optional)"),
+                        st.text_input("Recipient 3 (optional)"),
+                    ]
+                    if address.strip()
+                ),
             }
         if st.button("Start live monitoring", type="primary"):
             status = model_status()

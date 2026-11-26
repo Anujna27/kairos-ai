@@ -23,7 +23,7 @@ class EmailConfig:
     username: str
     password: str
     sender: str
-    recipient: str
+    recipients: tuple[str, ...]
     use_tls: bool = True
 
     @classmethod
@@ -38,13 +38,22 @@ class EmailConfig:
         missing = [name for name, value in required.items() if not value]
         if missing:
             raise ValueError(f"Missing email environment variables: {', '.join(missing)}")
+        recipients = tuple(
+            address.strip()
+            for address in required["ALERT_TO"].replace(";", ",").split(",")
+            if address.strip()
+        )
+        if not recipients:
+            raise ValueError("ALERT_TO must contain at least one email address")
+        if len(recipients) > 3:
+            raise ValueError("ALERT_TO supports a maximum of three email addresses")
         return cls(
             host=required["SMTP_HOST"],
             port=int(os.getenv("SMTP_PORT", "587")),
             username=required["SMTP_USERNAME"],
             password=required["SMTP_PASSWORD"],
             sender=required["ALERT_FROM"],
-            recipient=required["ALERT_TO"],
+            recipients=recipients,
             use_tls=os.getenv("SMTP_USE_TLS", "true").lower() not in {"0", "false", "no"},
         )
 
@@ -111,7 +120,7 @@ class EmailNotifier:
         message = EmailMessage()
         message["Subject"] = f"KAIROS anomaly alert: {machine_id}"
         message["From"] = self.config.sender
-        message["To"] = self.config.recipient
+        message["To"] = ", ".join(self.config.recipients)
         message.set_content(
             f"KAIROS detected a potential acoustic anomaly.\n\n"
             f"Machine: {machine_id}\n"
