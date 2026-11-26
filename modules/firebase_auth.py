@@ -76,6 +76,9 @@ def firebase_web_config() -> tuple[dict[str, str] | None, list[str]]:
 def admin_credentials_configured() -> bool:
     if _setting("FIREBASE_ADMIN_CREDENTIALS_JSON"):
         return True
+    credential_file = _setting("FIREBASE_ADMIN_CREDENTIALS_FILE")
+    if credential_file and Path(credential_file).is_file():
+        return True
     required = ("type", "project_id", "private_key", "client_email")
     return all(_setting(f"FIREBASE_ADMIN_{key.upper()}") for key in required)
 
@@ -87,6 +90,18 @@ def _admin_credentials() -> dict[str, Any]:
             value = json.loads(raw_json)
         except json.JSONDecodeError as exc:
             raise FirebaseConfigurationError("FIREBASE_ADMIN_CREDENTIALS_JSON is not valid JSON.") from exc
+        if not isinstance(value, dict):
+            raise FirebaseConfigurationError("Firebase Admin credentials must be a JSON object.")
+        return value
+    credential_file = _setting("FIREBASE_ADMIN_CREDENTIALS_FILE")
+    if credential_file:
+        path = Path(credential_file)
+        if not path.is_file():
+            raise FirebaseConfigurationError(f"Firebase Admin credential file not found: {path}")
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FirebaseConfigurationError("Firebase Admin credential file is not valid JSON.") from exc
         if not isinstance(value, dict):
             raise FirebaseConfigurationError("Firebase Admin credentials must be a JSON object.")
         return value

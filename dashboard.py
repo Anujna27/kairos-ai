@@ -11,7 +11,7 @@ from typing import Any
 from fasthtml.common import *
 from monsterui.all import *
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from modules.alerts import EmailConfig, EventStore
@@ -310,6 +310,11 @@ def community_like(request: Request, question_id: int) -> Any:
 @rt("/partials/phone-live")
 def phone_live_partial() -> Any:
     return phone_live_panel()
+
+
+@rt("/favicon.ico")
+def favicon() -> Response:
+    return Response(status_code=204)
 
 
 if __name__ == "__main__":
