@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="High, mid and low level A3 architecture diagram for the KAIROS-AI acoustic machine-health monitoring prototype.">
+    <title>KAIROS-AI architecture · A3 landscape</title>
+    <link rel="stylesheet" href="./architecture.css">
+  </head>
+  <body>
+    <main class="sheet" aria-labelledby="sheet-title">
+      <header class="sheet-header">
+        <div>
+          <p class="kicker">KAIROS-AI / architecture levels / acoustic machine health</p>
+          <h1 id="sheet-title">Three views of the system</h1>
+          <p class="subtitle">High-level context, runtime flow, and implementation detail on one A3 sheet.</p>
+        </div>
+        <div class="title-block" aria-label="Drawing metadata">
+          <div><span>sheet</span><span>A3 / landscape</span></div>
+          <div><span>revision</span><span>02</span></div>
+          <div><span>source</span><span>repo inspection</span></div>
+          <div><span>dated</span><span>2026-11-18</span></div>
+        </div>
+      </header>
+
+      <section class="tier tier-high band" aria-labelledby="high-title">
+        <div class="tier-head">
+          <div>
+            <h2 id="high-title">High level · system context</h2>
+            <p>Who supplies sound, what the prototype does, and what it returns.</p>
+          </div>
+        </div>
+        <div class="high-grid">
+          <article class="high-node high-node--person">
+            <h3>Operator and machine</h3>
+            <p>Chooses a machine and supplies a recording from upload or laptop microphone.</p>
+            <span class="module-file">user / audio source</span>
+          </article>
+          <div class="high-link" aria-hidden="true"></div>
+          <article class="high-node high-node--instrument">
+            <h3>KAIROS-AI prototype</h3>
+            <p>Streamlit workspace for capture, signal inspection, feature extraction and diagnostics.</p>
+            <span class="module-file">app.py</span>
+          </article>
+          <div class="high-link" aria-hidden="true"></div>
+          <article class="high-node high-node--model">
+            <h3>Model and workflows</h3>
+            <p>Healthy-only training, reusable Isolation Forest inference and labeled evaluation.</p>
+            <span class="module-file">modules / models / dataset</span>
+          </article>
+          <div class="high-link" aria-hidden="true"></div>
+          <article class="high-node high-node--person">
+            <h3>Decision surface</h3>
+            <p>Normal or anomaly result, score explanation, machine snapshot and session history.</p>
+            <span class="module-file">dashboard / alerts</span>
+          </article>
+        </div>
+        <p class="high-boundary"><strong>Future boundary:</strong> ESP32 + INMP441 over MQTT or HTTP is named by the project but not connected. An ingestion adapter would join before the audio pipeline.</p>
+      </section>
+
+      <section class="tier tier-mid architecture-map" aria-labelledby="mid-title">
+        <div class="map-head">
+          <div class="tier-head">
+            <div>
+              <h2 id="mid-title">Mid level · runtime path</h2>
+              <p>One recording, four stages. Blue follows instrument data; amber marks the operator-facing surface.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="flow-column flow-column--person">
+            <div class="column-head">
+              <span class="node-number">01</span>
+              <div>
+                <h3>Capture</h3>
+                <p>Operator supplies a machine recording.</p>
+              </div>
+            </div>
+            <article class="node node--person">
+              <h3>Upload recording</h3>
+              <p>WAV, FLAC, MP3 or OGG through the dashboard.</p>
+              <span class="module-file">app.py / load_audio</span>
+            </article>
+            <article class="node node--person">
+              <h3>Laptop microphone</h3>
+              <p>Local capture with duration and sampling-rate controls.</p>
+              <span class="module-file">app.py / record_audio</span>
+            </article>
+          </div>
+
+          <div class="flow-column">
+            <div class="column-head">
+              <span class="node-number">02</span>
+              <div>
+                <h3>Prepare + view</h3>
+                <p>Make the audio inspectable before ML work.</p>
+              </div>
+            </div>
+            <article class="node node--instrument">
+              <h3>Mono / resample</h3>
+              <p>Shared feature path normalizes to 22,050 Hz.</p>
+              <span class="module-file">audio_input.py</span>
+            </article>
+            <article class="node node--instrument">
+              <h3>Signal views</h3>
+              <p>Waveform, FFT and optional spectrogram for inspection.</p>
+              <span class="module-file">signal_processing.py</span>
+            </article>
+          </div>
+
+          <div class="flow-column">
+            <div class="column-head">
+              <span class="node-number">03</span>
+              <div>
+                <h3>Extract + score</h3>
+                <p>Turn sound into a stable feature vector and result.</p>
+              </div>
+            </div>
+            <article class="node node--instrument">
+              <h3>Fixed-order features</h3>
+              <p>13 MFCC means and standard deviations, plus five spectral summaries.</p>
+              <span class="module-file">feature_extraction.py / 36 values</span>
+            </article>
+            <article class="node node--model">
+              <h3>Isolation Forest</h3>
+              <p>StandardScaler plus fitted model returns NORMAL or ANOMALY. Score is relative, not a probability.</p>
+              <span class="module-file">anomaly_detection.py</span>
+            </article>
+          </div>
+
+          <div class="flow-column flow-column--person">
+            <div class="column-head">
+              <span class="node-number">04</span>
+              <div>
+                <h3>Present</h3>
+                <p>Operator reads the result in the workspace.</p>
+              </div>
+            </div>
+            <article class="node node--person">
+              <h3>Streamlit dashboard</h3>
+              <p>Overview, acoustic analysis and AI diagnostics.</p>
+              <span class="module-file">app.py</span>
+            </article>
+            <article class="node node--person">
+              <h3>Fleet + history</h3>
+              <p>Machine snapshots, session history and alerts.</p>
+              <span class="module-file">machine_manager.py</span>
+            </article>
+          </div>
+        </div>
+
+        <p class="flow-caption"><strong>Failure boundary:</strong> waveform and FFT have standard-library fallbacks; MFCC, spectral features and the spectrogram remain dependency-sensitive and report an explicit scientific-dependency warning when unavailable.</p>
+      </section>
+
+      <section class="tier tier-low band" aria-labelledby="low-title">
+        <div class="tier-head">
+          <div>
+            <h2 id="low-title">Low level · implementation detail</h2>
+            <p>Concrete modules, data contracts and persisted outputs behind the runtime stages.</p>
+          </div>
+        </div>
+        <div class="low-grid">
+          <article class="low-cell">
+            <h3>Input and signal processing</h3>
+            <span class="module-file">audio_input.py</span>
+            <p>Decode, normalize and capture audio.</p>
+            <span class="module-file">signal_processing.py</span>
+            <p>Generate waveform, FFT and spectrogram views.</p>
+            <p class="low-note">Dependency errors stay local to scientific features.</p>
+          </article>
+          <article class="low-cell">
+            <h3>Features and model</h3>
+            <span class="module-file">feature_extraction.py</span>
+            <p>Fixed schema: MFCC and spectral summaries in stable order.</p>
+            <span class="module-file">anomaly_detection.py</span>
+            <p>Build, save, load and score the StandardScaler pipeline.</p>
+            <p class="low-note">Model artifact: <span class="mono">models/isolation_forest.joblib</span></p>
+          </article>
+          <article class="low-cell">
+            <h3>Workflows and state</h3>
+            <span class="module-file">train.py / predict.py / evaluation.py</span>
+            <p>Fit from normal recordings, predict one file, or write evaluation metrics.</p>
+            <span class="module-file">machine_manager.py</span>
+            <p>Keep machine registry and session-derived snapshots.</p>
+            <p class="low-note">Evaluation output includes JSON and a confusion-matrix PNG.</p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="sheet-footer">
+        <p><strong>Prototype boundary.</strong> No live telemetry, fault diagnosis, claimed accuracy or fabricated sensor history is represented here.</p>
+        <div class="legend" aria-label="Legend">
+          <span class="legend-item"><span class="legend-swatch"></span>instrument data</span>
+          <span class="legend-item"><span class="legend-swatch legend-swatch--amber"></span>operator surface</span>
+          <span class="legend-item"><span class="legend-swatch legend-swatch--green"></span>model stage</span>
+          <span class="legend-item"><span class="legend-swatch legend-swatch--dash"></span>future / not connected</span>
+        </div>
+        <p class="footer-note">drawing 02 / KAIROS-AI / three levels / A3</p>
+      </footer>
+    </main>
+  </body>
+</html>

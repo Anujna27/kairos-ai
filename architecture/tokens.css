@@ -1,0 +1,32 @@
+/* Hallmark · v2.0.0 · shape: Map / Diagram · theme: Console (graphite) · sheet: A3 landscape · signature: high/mid/low repo architecture */
+/* critique: make three abstraction levels legible on one sheet; use colour only to separate instrument data, operator action and model stages. */
+
+:root {
+  --color-paper: #111316;
+  --color-paper-2: #171a1e;
+  --color-paper-3: #0d0f12;
+  --color-ink: #f1f2f2;
+  --color-ink-2: #c7cbce;
+  --color-muted: #92999f;
+  --color-rule: #353a40;
+  --color-rule-2: #5b636b;
+  --color-cool: #8cc7ff;
+  --color-cool-soft: #183043;
+  --color-accent: #f2b746;
+  --color-accent-ink: #241b0a;
+  --color-accent-soft: #3a2d15;
+  --color-ok: #74d59b;
+  --color-ok-soft: #173326;
+  --color-bad: #ef817d;
+  --color-bad-soft: #3a2021;
+  --font-display: "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-outlier: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  --radius-card: 10px;
+  --radius-small: 6px;
+  --rule-hair: 1px;
+  --rule-heavy: 2px;
+  --shadow-none: none;
+  --sheet-width: 420mm;
+  --sheet-height: 297mm;
+}

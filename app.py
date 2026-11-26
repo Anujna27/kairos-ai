@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import io
+import json
+import os
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 
 from modules.anomaly_detection import MODEL_PATH, load_model, model_status, predict_anomaly, train_from_directory
+from modules.alerts import EventStore
 from modules.audio_input import load_audio, record_audio
 from modules.feature_extraction import FeatureExtractionError, extract_features_from_audio
 from modules.machine_manager import get_machines, machine_snapshot, utc_timestamp
@@ -37,6 +43,7 @@ def init_state() -> None:
     st.session_state.setdefault("history", [])
     st.session_state.setdefault("analysis", None)
     st.session_state.setdefault("selected_machine", "MTR-01")
+    st.session_state.setdefault("live_process", None)
 
 
 def status_badge(status: str) -> str:
@@ -60,21 +67,37 @@ def audio_bytes(audio, sample_rate: int) -> bytes:
     return buffer.getvalue()
 
 
+def live_events(limit: int = 500) -> list[dict]:
+    event_db = Path("data/kairos_events.db")
+    if not event_db.is_file():
+        return []
+    store = EventStore(event_db)
+    try:
+        return store.recent(limit)
+    finally:
+        store.close()
+
+
 def overview() -> None:
     st.title("Overview")
-    st.caption("Acoustic Intelligence & Predictive Maintenance · Demonstration workspace")
-    snapshot = machine_snapshot(st.session_state.history)
-    anomalies = [m for m in snapshot if m["status"] == "ANOMALY"]
+    st.caption("Acoustic Intelligence & Predictive Machine Health Monitoring")
+    events = live_events()
+    session_records = st.session_state.history
+    anomalies = [event for event in events if event["status"] == "ANOMALY"]
+    latest = events[0] if events else None
+    model = model_status()
     cols = st.columns(4)
-    for col, label, value in zip(cols, ["Machines monitored", "Healthy machines", "Anomalies detected", "Audio analyses"], [len(snapshot), len(snapshot) - len(anomalies), len(anomalies), len(st.session_state.history)]):
+    for col, label, value in zip(cols, ["Live events", "Live anomalies", "Emails sent", "Session analyses"], [len(events), len(anomalies), sum(bool(event["alert_sent"]) for event in events), len(session_records)]):
         with col:
             st.markdown(f'<div class="panel"><div class="metric-label">{label}</div><div class="metric-value">{value}</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="panel"><b>System status</b> &nbsp; <span class="status healthy">OPERATIONAL</span><div class="small">No live IoT feed is connected. Values below are demonstration state until audio is analyzed.</div></div>', unsafe_allow_html=True)
-    st.subheader("Machine fleet")
-    cards = st.columns(4)
-    for col, machine in zip(cards, snapshot):
-        with col:
-            st.markdown(f'<div class="panel"><b>{machine["name"]}</b><br><span class="small">{machine["id"]} · {machine["type"]}</span><br><br>{status_badge(str(machine["status"]))}<br><br><span class="small">Last analysis: {machine["last_analysis"]}</span></div>', unsafe_allow_html=True)
+    model_text = model["detail"]
+    latest_text = f"Latest live result: {latest['status']} for {latest['machine_id']} at {latest['timestamp']}" if latest else "No live monitoring events recorded yet."
+    st.markdown(f'<div class="panel"><b>System status</b> &nbsp; {status_badge("TRAINED" if model["status"] == "TRAINED" else model["status"])}<div class="small">{model_text}<br>{latest_text}</div></div>', unsafe_allow_html=True)
+    if events:
+        st.subheader("Latest real events")
+        st.dataframe(events[:10], use_container_width=True, hide_index=True)
+    else:
+        st.info("No live data yet. Start Live Monitoring or analyze an audio recording.")
 
 
 def acoustic_analysis() -> None:
@@ -183,11 +206,232 @@ def diagnostics() -> None:
 
 def monitoring() -> None:
     st.title("Machine Monitoring")
-    st.caption("Demonstration fleet registry · live ESP32 telemetry is not connected")
-    for machine in machine_snapshot(st.session_state.history):
-        st.markdown(f'<div class="panel"><b>{machine["name"]}</b> &nbsp; {status_badge(str(machine["status"]))}<br><span class="small">ID {machine["id"]} · {machine["type"]} · Last analyzed {machine["last_analysis"]}</span></div>', unsafe_allow_html=True)
-    st.subheader("Future hardware integration")
-    st.write("An ESP32 DevKit with an INMP441 I2S microphone can eventually publish audio windows and metadata over MQTT or HTTP. An ingestion adapter would feed those windows into the existing preprocessing pipeline; this prototype intentionally does not fabricate live IoT data.")
+    st.caption("Machine status from actual live-monitoring events")
+    events = live_events()
+    if not events:
+        st.info("No machine events recorded yet. Start Live Monitoring to populate this page.")
+        return
+    latest_by_machine = {}
+    for event in events:
+        latest_by_machine.setdefault(event["machine_id"], event)
+    for machine_id, event in latest_by_machine.items():
+        st.markdown(f'<div class="panel"><b>{machine_id}</b> &nbsp; {status_badge(str(event["status"]))}<br><span class="small">Last event: {event["timestamp"]} · anomaly score: {event["anomaly_score"]:.6f}</span></div>', unsafe_allow_html=True)
+
+
+def live_monitoring() -> None:
+    st.title("Live Monitoring")
+    st.caption("Continuous microphone analysis with optional email alerts")
+    process = st.session_state.live_process
+    if process is not None and process.poll() is not None:
+        log_path = Path("data/live_monitor.log")
+        if log_path.is_file():
+            try:
+                log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-2000:]
+            except OSError:
+                log_tail = ""
+            if log_tail:
+                st.error("Live monitoring stopped. Last worker output:")
+                st.code(log_tail)
+        st.session_state.live_process = None
+        process = None
+
+    if process is not None:
+        st.success(f"Live monitoring is running (process {process.pid}).")
+        _render_live_waveform()
+        if st.button("Stop live monitoring", type="primary"):
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            st.session_state.live_process = None
+            st.rerun()
+    else:
+        st.info("Monitoring is stopped. Start it to analyze the default microphone continuously.")
+        machines = get_machines()
+        labels = {machine["name"]: machine["id"] for machine in machines}
+        selected_name = st.selectbox("Machine", list(labels), key="live_machine")
+        device_options: dict[str, int] = {}
+        try:
+            import sounddevice as sd
+            for index, device in enumerate(sd.query_devices()):
+                if int(device.get("max_input_channels", 0)) > 0:
+                    label = f"{index}: {device['name']} · {int(device['max_input_channels'])} input channel(s)"
+                    device_options[label] = index
+        except Exception as exc:
+            st.error(f"Could not list microphone devices: {exc}")
+        if not device_options:
+            st.error("No microphone input devices were found.")
+            return
+        selected_device_label = st.selectbox("Microphone input", list(device_options), key="live_device")
+        selected_device = device_options[selected_device_label]
+        st.caption("Use the same microphone and placement used to record the normal training examples.")
+        window_seconds = st.number_input("Analysis window (seconds)", min_value=2.0, max_value=60.0, value=5.0, step=1.0)
+        interval_seconds = st.number_input("Analysis interval (seconds)", min_value=1.0, max_value=60.0, value=5.0, step=1.0)
+        required_anomalies = st.number_input("Anomalous windows before alert", min_value=1, max_value=20, value=3, step=1)
+        cooldown_minutes = st.number_input("Email cooldown (minutes)", min_value=0, max_value=1440, value=60, step=5)
+        send_email = st.checkbox("Send email alerts", value=False)
+        email_values: dict[str, str] = {}
+        if send_email:
+            st.warning("SMTP credentials are used only by the monitor process and are not saved to the repository.")
+            email_values = {
+                "SMTP_HOST": st.text_input("SMTP host"),
+                "SMTP_PORT": st.text_input("SMTP port", value="587"),
+                "SMTP_USERNAME": st.text_input("SMTP username"),
+                "SMTP_PASSWORD": st.text_input("SMTP password", type="password"),
+                "ALERT_FROM": st.text_input("From address"),
+                "ALERT_TO": st.text_input("To address"),
+            }
+        if st.button("Start live monitoring", type="primary"):
+            status = model_status()
+            if status["status"] != "TRAINED":
+                st.error("Train the model before starting live monitoring.")
+            elif send_email and any(not value for value in email_values.values()):
+                st.error("Complete all email settings or turn off email alerts.")
+            else:
+                environment = os.environ.copy()
+                if send_email:
+                    environment.update(email_values)
+                command = [
+                    sys.executable, "-m", "modules.live_monitor",
+                    "--machine-id", labels[selected_name],
+                    "--device", str(selected_device),
+                    "--window-seconds", str(window_seconds),
+                    "--interval-seconds", str(interval_seconds),
+                    "--required-anomalies", str(required_anomalies),
+                    "--cooldown-seconds", str(int(cooldown_minutes * 60)),
+                ]
+                if not send_email:
+                    command.append("--no-email")
+                log_path = Path("data/live_monitor.log")
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_handle = log_path.open("w", encoding="utf-8")
+                st.session_state.live_process = subprocess.Popen(
+                    command, cwd=Path(__file__).resolve().parent, env=environment,
+                    stdout=log_handle, stderr=subprocess.STDOUT,
+                )
+                log_handle.close()
+                st.rerun()
+
+    st.subheader("Recent live events")
+    if st.button("Clear live history", type="secondary"):
+        _confirm_clear_live_history()
+    event_db = Path("data/kairos_events.db")
+    if event_db.is_file():
+        store = EventStore(event_db)
+        try:
+            events = store.recent(20)
+        finally:
+            store.close()
+        if events:
+            st.caption("Legend: timestamp = event time (UTC) · machine_id = monitored machine · status = model result · anomaly_score = higher means more unusual · decision_score = model decision value · alert_sent = whether an email was sent · message = readable interpretation")
+            anomaly_count = sum(event["status"] == "ANOMALY" for event in events)
+            alert_count = sum(bool(event["alert_sent"]) for event in events)
+            metric_columns = st.columns(3)
+            metric_columns[0].metric("Events shown", len(events))
+            metric_columns[1].metric("Anomalies", anomaly_count)
+            metric_columns[2].metric("Emails sent", alert_count)
+            try:
+                import pandas as pd
+                import plotly.express as px
+                chart_data = pd.DataFrame(events).sort_values("timestamp")
+                st.plotly_chart(
+                    px.line(chart_data, x="timestamp", y="anomaly_score", color="machine_id", markers=True,
+                            title="Recent anomaly scores"), use_container_width=True,
+                )
+                status_data = pd.DataFrame({"status": ["NORMAL", "ANOMALY"], "count": [len(events) - anomaly_count, anomaly_count]})
+                st.plotly_chart(
+                    px.bar(status_data, x="status", y="count", color="status", title="Recent result counts"),
+                    use_container_width=True,
+                )
+            except ImportError:
+                st.info("Charts require Pandas and Plotly; the event table is still available.")
+            st.dataframe(events, use_container_width=True, hide_index=True)
+        else:
+            st.info("No live events recorded yet.")
+    else:
+        st.info("No event database exists yet. Start monitoring to create it.")
+
+
+@st.fragment(run_every="1s")
+def phone_monitoring() -> None:
+    st.title("Phone Live Monitoring")
+    st.caption("Smartphone microphone → WebSocket → laptop model")
+    st.code(".venv/bin/python -m modules.phone_stream", language="bash")
+    st.write("Start the phone audio server, then open its address on the phone. The trained model remains on this laptop.")
+    state_path = Path("data/phone_live_state.json")
+    if not state_path.is_file():
+        st.info("Phone server has not reported a session yet.")
+        return
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        st.warning("Phone session state is temporarily unavailable.")
+        return
+    if not state.get("connected"):
+        st.warning("Phone is disconnected.")
+    else:
+        st.success(f"Phone connected for {state.get('machine_id', 'unknown machine')}.")
+    if state.get("status"):
+        st.metric("Latest result", state["status"])
+        cols = st.columns(4)
+        cols[0].metric("RMS", f"{state.get('rms', 0):.4f}")
+        cols[1].metric("Peak", f"{state.get('peak', 0):.4f}")
+        cols[2].metric("Dominant frequency", f"{state.get('dominant_frequency', 0):.1f} Hz")
+        cols[3].metric("Anomaly score", f"{state.get('anomaly_score', 0):.4f}")
+    events = [event for event in live_events() if str(event.get("machine_id", "")).startswith("PHONE")]
+    if events:
+        st.subheader("Phone events")
+        st.dataframe(events[:20], use_container_width=True, hide_index=True)
+
+
+@st.dialog("Clear live monitoring history")
+def _confirm_clear_live_history() -> None:
+    st.warning("This will permanently remove the recorded live events and reset the waveform snapshot. The trained model will not be affected.")
+    confirm = st.checkbox("I understand that the live history will be deleted.")
+    left, right = st.columns(2)
+    with left:
+        if st.button("Cancel"):
+            st.rerun()
+    with right:
+        if st.button("Delete history", type="primary", disabled=not confirm):
+            event_db = Path("data/kairos_events.db")
+            if event_db.is_file():
+                store = EventStore(event_db)
+                try:
+                    # Keep the UI compatible with a monitor process that imported
+                    # an older EventStore module during Streamlit hot reload.
+                    if hasattr(store, "clear"):
+                        store.clear()
+                    else:
+                        store.connection.execute("DELETE FROM events")
+                        store.connection.commit()
+                finally:
+                    store.close()
+            waveform_path = Path("data/live_waveform.json")
+            if waveform_path.is_file():
+                waveform_path.unlink()
+            st.success("Live history cleared.")
+            st.rerun()
+
+
+@st.fragment(run_every="1s")
+def _render_live_waveform() -> None:
+    st.subheader("Live audio signal")
+    waveform_path = Path("data/live_waveform.json")
+    if not waveform_path.is_file():
+        st.info("Waiting for the first audio window…")
+        return
+    try:
+        payload = json.loads(waveform_path.read_text(encoding="utf-8"))
+        samples = payload.get("samples", [])
+        if not samples:
+            st.info("Waiting for the first audio window…")
+            return
+        st.line_chart(samples, height=220)
+        st.caption("The chart refreshes while the monitor is running and shows the latest analysis window.")
+    except (OSError, ValueError, TypeError):
+        st.info("Waiting for a readable waveform snapshot…")
 
 
 def alerts() -> None:
@@ -195,24 +439,30 @@ def alerts() -> None:
     if st.button("Clear session history"):
         st.session_state.history = []
         st.rerun()
-    if not st.session_state.history:
-        st.info("No alerts or analyses in this session.")
+    events = live_events()
+    if not st.session_state.history and not events:
+        st.info("No alerts or analyses recorded yet.")
         return
-    st.table(st.session_state.history)
+    if events:
+        st.subheader("Live monitoring history")
+        st.dataframe(events, use_container_width=True, hide_index=True)
+    if st.session_state.history:
+        st.subheader("Current dashboard session")
+        st.table(st.session_state.history)
 
 
 def about() -> None:
     st.title("About KAIROS-AI")
     st.markdown("**Every machine has a voice. We detect when something goes wrong.**")
     st.write("KAIROS-AI combines signal processing and anomaly detection for non-invasive machine health monitoring. It is designed for team development: audio input, signal processing, model logic, machine registry, and presentation are separated into modules.")
-    st.info("Prototype boundary: no labelled fault classifier, no claimed accuracy, no live hardware feed, and no fake sensor history.")
+    st.info("The dashboard displays model results from uploaded/recorded audio and live-monitoring events. It does not fabricate sensor readings or claim fault probabilities.")
 
 
 init_state()
 with st.sidebar:
     st.markdown('<div class="brand">KAIROS-AI</div><div class="tagline">Acoustic Intelligence for Predictive Machine Health Monitoring</div>', unsafe_allow_html=True)
-    page = st.radio("Navigate", ["Overview", "Acoustic Analysis", "AI Diagnostics", "Machine Monitoring", "Alerts & History", "About Project"])
+    page = st.radio("Navigate", ["Overview", "Acoustic Analysis", "AI Diagnostics", "Live Monitoring", "Phone Monitoring", "Machine Monitoring", "Alerts & History", "About Project"], label_visibility="collapsed")
     st.divider()
     st.caption("Prototype mode · audio-first")
 
-{"Overview": overview, "Acoustic Analysis": acoustic_analysis, "AI Diagnostics": diagnostics, "Machine Monitoring": monitoring, "Alerts & History": alerts, "About Project": about}[page]()
+{"Overview": overview, "Acoustic Analysis": acoustic_analysis, "AI Diagnostics": diagnostics, "Live Monitoring": live_monitoring, "Phone Monitoring": phone_monitoring, "Machine Monitoring": monitoring, "Alerts & History": alerts, "About Project": about}[page]()
