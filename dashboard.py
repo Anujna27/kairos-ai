@@ -158,7 +158,10 @@ def layout(content: Any, active: str = "Overview") -> Any:
                     cls="flex gap-8",
                 ),
                 cls="kairos-shell",
-            ), id="app-shell", hidden=True),
+                id="app-shell",
+                hidden=True,
+            ),
+            ),
             auth_script,
         ),
     )
