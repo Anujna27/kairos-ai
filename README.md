@@ -11,6 +11,25 @@ abnormal `id_00` recordings are kept separately for evaluation. With this small
 sample set, the initial evaluation flagged 12 of 20 abnormal clips; this is a
 development check, not a production accuracy claim.
 
+Live monitoring can notify up to three email recipients. Enter the SMTP
+settings and one to three recipient addresses on the Live Monitoring page;
+the same alert is delivered to each address.
+
+SMTP values can be saved locally as Windows user environment variables so they
+do not need to be entered each time the dashboard starts:
+
+```powershell
+[Environment]::SetEnvironmentVariable("SMTP_HOST", "smtp.gmail.com", "User")
+[Environment]::SetEnvironmentVariable("SMTP_PORT", "587", "User")
+[Environment]::SetEnvironmentVariable("SMTP_USERNAME", "kairos.machine.alerts@gmail.com", "User")
+[Environment]::SetEnvironmentVariable("SMTP_PASSWORD", "your-gmail-app-password", "User")
+[Environment]::SetEnvironmentVariable("ALERT_FROM", "kairos.machine.alerts@gmail.com", "User")
+[Environment]::SetEnvironmentVariable("ALERT_TO", "person1@example.com,person2@example.com,person3@example.com", "User")
+```
+
+Restart PowerShell and Streamlit after changing environment variables. Use a
+Gmail App Password for `SMTP_PASSWORD`; never commit credentials to GitHub.
+
 The trained model stays on the Linux laptop. A phone acts only as a wireless
 microphone and browser display: audio is sent to the laptop over WebSocket, the
 laptop extracts the exact training features and loads

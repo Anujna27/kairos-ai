@@ -275,12 +275,24 @@ def live_monitoring() -> None:
         if send_email:
             st.warning("SMTP credentials are used only by the monitor process and are not saved to the repository.")
             email_values = {
-                "SMTP_HOST": st.text_input("SMTP host"),
-                "SMTP_PORT": st.text_input("SMTP port", value="587"),
-                "SMTP_USERNAME": st.text_input("SMTP username"),
-                "SMTP_PASSWORD": st.text_input("SMTP password", type="password"),
-                "ALERT_FROM": st.text_input("From address"),
-                "ALERT_TO": st.text_input("To address"),
+                "SMTP_HOST": st.text_input("SMTP host", value=os.getenv("SMTP_HOST", "")),
+                "SMTP_PORT": st.text_input("SMTP port", value=os.getenv("SMTP_PORT", "587")),
+                "SMTP_USERNAME": st.text_input("SMTP username", value=os.getenv("SMTP_USERNAME", "")),
+                "SMTP_PASSWORD": st.text_input(
+                    "SMTP password",
+                    value=os.getenv("SMTP_PASSWORD", ""),
+                    type="password",
+                ),
+                "ALERT_FROM": st.text_input("From address", value=os.getenv("ALERT_FROM", "")),
+                "ALERT_TO": ",".join(
+                    address.strip()
+                    for address in [
+                        st.text_input("Recipient 1", value=os.getenv("ALERT_TO", "").split(",")[0].strip()),
+                        st.text_input("Recipient 2 (optional)", value=os.getenv("ALERT_TO", "").split(",")[1].strip() if len(os.getenv("ALERT_TO", "").split(",")) > 1 else ""),
+                        st.text_input("Recipient 3 (optional)", value=os.getenv("ALERT_TO", "").split(",")[2].strip() if len(os.getenv("ALERT_TO", "").split(",")) > 2 else ""),
+                    ]
+                    if address.strip()
+                ),
             }
         if st.button("Start live monitoring", type="primary"):
             status = model_status()
