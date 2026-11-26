@@ -196,6 +196,54 @@ The dashboard reads the phone session state and SQLite events written by the
 FastAPI process. The **Phone Monitoring** page refreshes automatically while it
 is open, so the latest phone result appears there without a manual reload.
 
+### Community
+
+The **Community** page stores questions, answers, and likes in
+`data/kairos_community.db` using SQLite, so posts survive Streamlit restarts.
+Questions are sorted by helpful votes and then newest-first; the database
+primary key on `(question_id, user_id)` prevents duplicate likes. The entire
+KAIROS-AI dashboard requires Google Sign-In through Firebase Authentication;
+the browser
+uses Firebase's official Web SDK, while the Python backend verifies every ID
+token with Firebase Admin before accepting a question, answer, like, unlike,
+or deletion. Service-account credentials are never sent to the browser.
+Content is redacted by the reusable `modules/community_filter.py` module
+before it is saved.
+
+#### Firebase setup
+
+1. Create or select a Firebase project at the Firebase Console.
+2. Add a Web app and copy its Web configuration values.
+3. In **Authentication → Sign-in method**, enable the Google provider and add
+   the app's local/deployed domain to the authorized domains.
+4. In **Project settings → Service accounts**, create a service-account key
+   for the backend. Store it only in protected deployment secrets.
+
+For local development, configure the Web values as environment variables:
+
+```text
+FIREBASE_API_KEY=...
+FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_STORAGE_BUCKET=...
+FIREBASE_MESSAGING_SENDER_ID=...
+FIREBASE_APP_ID=...
+FIREBASE_ADMIN_CREDENTIALS_JSON={"type":"service_account", ...}
+```
+
+The application reads these values from protected environment configuration
+only. Copy `.env.example` to a local, ignored `.env` file and populate it, or
+configure the same variables in the deployment environment. Never commit the
+JSON, private key, or passwords. The Community page shows a setup error and
+does not fall back to anonymous/session identities when configuration is
+missing.
+
+Existing SQLite rows are preserved without migration. Questions created by the
+older prototype may contain identities that cannot be verified as Firebase
+UIDs; they remain readable, but no new Firebase user can delete them unless
+the verified UID already matches the stored owner. No legacy question is
+assigned to an arbitrary Firebase user.
+
 ### Recommended demo
 
 1. Train the model from the healthy WAV recordings in `dataset/normal/`.

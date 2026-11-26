@@ -16,11 +16,17 @@ from modules.anomaly_detection import MODEL_PATH, load_model, model_status, pred
 from modules.alerts import EventStore
 from modules.audio_input import load_audio, record_audio
 from modules.feature_extraction import FeatureExtractionError, extract_features_from_audio
+from modules.firebase_auth import require_authenticated_user
 from modules.machine_manager import get_machines, machine_snapshot, utc_timestamp
+from modules.community_ui import community
 from modules.signal_processing import ScientificDependencyError, calculate_fft, generate_spectrogram, generate_waveform
 
 
 st.set_page_config(page_title="KAIROS-AI", page_icon="◈", layout="wide", initial_sidebar_state="expanded")
+
+authenticated_user = require_authenticated_user()
+if authenticated_user is None:
+    st.stop()
 
 st.markdown("""
 <style>
@@ -461,8 +467,11 @@ def about() -> None:
 init_state()
 with st.sidebar:
     st.markdown('<div class="brand">KAIROS-AI</div><div class="tagline">Acoustic Intelligence for Predictive Machine Health Monitoring</div>', unsafe_allow_html=True)
-    page = st.radio("Navigate", ["Overview", "Acoustic Analysis", "AI Diagnostics", "Live Monitoring", "Phone Monitoring", "Machine Monitoring", "Alerts & History", "About Project"], label_visibility="collapsed")
+    if authenticated_user.get("picture"):
+        st.image(authenticated_user["picture"], width=42)
+    st.caption(authenticated_user.get("name") or authenticated_user.get("email") or "Signed-in user")
+    page = st.radio("Navigate", ["Overview", "Acoustic Analysis", "AI Diagnostics", "Live Monitoring", "Phone Monitoring", "Machine Monitoring", "Alerts & History", "Community", "About Project"], label_visibility="collapsed")
     st.divider()
-    st.caption("Prototype mode · audio-first")
+    st.caption("Firebase-authenticated mode · audio-first")
 
-{"Overview": overview, "Acoustic Analysis": acoustic_analysis, "AI Diagnostics": diagnostics, "Live Monitoring": live_monitoring, "Phone Monitoring": phone_monitoring, "Machine Monitoring": monitoring, "Alerts & History": alerts, "About Project": about}[page]()
+{"Overview": overview, "Acoustic Analysis": acoustic_analysis, "AI Diagnostics": diagnostics, "Live Monitoring": live_monitoring, "Phone Monitoring": phone_monitoring, "Machine Monitoring": monitoring, "Alerts & History": alerts, "Community": community, "About Project": about}[page]()
