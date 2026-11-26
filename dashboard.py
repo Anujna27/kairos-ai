@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 from fasthtml.common import *
 from monsterui.all import *
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from modules.alerts import EmailConfig, EventStore
 from modules.anomaly_detection import MODEL_PATH, model_status, train_from_directory
+from modules.community_api import build_community_api
+from modules.firebase_core import firebase_web_config
 
 ROOT = Path(__file__).resolve().parent
 STATE_PATH = ROOT / "data" / "phone_live_state.json"
@@ -31,6 +37,8 @@ body { min-height:100vh; background:radial-gradient(circle at 75% -10%, rgba(67,
 .kairos-nav-item { transform-origin:left center; transition:transform 160ms cubic-bezier(.22,1,.36,1), background-color 160ms ease; }
 .kairos-nav-item:hover { transform:translateX(3px) scale(1.045); }
 .kairos-nav-item:focus-visible { transform:translateX(3px) scale(1.045); outline:2px solid hsl(var(--ring)); outline-offset:2px; }
+.auth-gate { position:fixed; inset:0; z-index:100; display:grid; place-items:center; background:hsl(var(--background)); }
+.auth-card { width:min(420px, calc(100vw - 32px)); }
 .hero-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:18px; align-items:stretch; }
 .metric-value { font-size:1.8rem; font-weight:800; letter-spacing:-.04em; }
 .eyebrow { font-size:.72rem; letter-spacing:.13em; text-transform:uppercase; color:hsl(var(--muted-foreground)); }
@@ -114,13 +122,24 @@ def phone_live_panel() -> Any:
 
 
 def layout(content: Any, active: str = "Overview") -> Any:
-    links = [("Overview", "/", "home"), ("AI diagnostics", "/ai", "activity"), ("Training", "/training", "settings"), ("Phone monitoring", "/phone", "mic"), ("Live events", "/events", "list"), ("Alert settings", "/alerts", "bell")]
+    links = [("Overview", "/", "home"), ("AI diagnostics", "/ai", "activity"), ("Training", "/training", "settings"), ("Phone monitoring", "/phone", "mic"), ("Live events", "/events", "list"), ("Community", "/community", "users"), ("Alert settings", "/alerts", "bell")]
+    firebase_config, _ = firebase_web_config()
+    auth_script = Script(f"""
+      import {{ initializeApp }} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+      import {{ getAuth, GoogleAuthProvider, browserLocalPersistence, onAuthStateChanged, setPersistence, signInWithPopup, signInWithRedirect, getRedirectResult }} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+      const config={json.dumps(firebase_config or {})}, gate=document.getElementById('auth-gate'), shell=document.getElementById('app-shell'), authMessage=document.getElementById('auth-message');
+      window.kairosIdToken='';
+      window.kairosAuthReady=new Promise(async resolve=>{{
+        if(!config.apiKey){{authMessage.textContent='Firebase web configuration is missing.';resolve(false);return}}
+        try{{const auth=getAuth(initializeApp(config));await setPersistence(auth,browserLocalPersistence);await getRedirectResult(auth);const show=async user=>{{if(!user){{gate.style.display='grid';shell.style.display='none';resolve(false);return}}window.kairosIdToken=await user.getIdToken();gate.style.display='none';shell.style.display='block';resolve(true)}};onAuthStateChanged(auth,show);document.addEventListener('click',async e=>{{if(e.target.closest('#google-login')){{try{{await signInWithPopup(auth,new GoogleAuthProvider())}}catch(err){{if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment'].includes(err.code))await signInWithRedirect(auth,new GoogleAuthProvider());else authMessage.textContent=err.message}}}}}})}}catch(err){{authMessage.textContent=err.message;resolve(false)}}
+      }});
+    """, type="module")
     return Html(
         Head(Title(f"KAIROS · {active}"), *Theme.blue.headers(), custom_css, Script(src="https://unpkg.com/htmx.org@2.0.4"), Script("""
             (()=>{const root=document.documentElement;const key='kairos-theme';const saved=localStorage.getItem(key);if(saved==='light')root.classList.remove('dark');if(saved==='dark')root.classList.add('dark');document.addEventListener('click',e=>{const b=e.target.closest('#theme-toggle');if(!b)return;const dark=root.classList.toggle('dark');localStorage.setItem(key,dark?'dark':'light');b.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');});})();
         """)),
         Body(
-            Div(
+            Div(Div(Card(H2("KAIROS", cls="text-2xl font-bold"), P("Sign in to continue.", cls="text-muted-foreground"), P(id="auth-message", cls="text-error text-sm min-h-6"), Button("Continue with Google", id="google-login", cls="btn btn-primary w-full mt-4"), cls="auth-card p-8"), cls="auth-gate", id="auth-gate"), Div(
                 Div(Span("KAIROS", cls="brand-mark"), Button(UkIcon("sun", height=18, width=18), Span("Theme", cls="sr-only"), id="theme-toggle", aria_label="Switch theme", cls="btn btn-ghost btn-sm ml-auto"), cls="flex items-center py-3"),
                 Div(
                     Aside(H3("KAIROS", cls="text-xl font-bold mb-8"), *[A(UkIcon(icon, height=17, width=17), Span(label, cls="ml-2"), href=href, cls=f"kairos-nav-item btn btn-ghost justify-start w-full mb-1 {'btn-active' if label == active else ''}") for label, href, icon in links], cls="hidden md:block w-56"),
@@ -128,12 +147,26 @@ def layout(content: Any, active: str = "Overview") -> Any:
                     cls="flex gap-8",
                 ),
                 cls="kairos-shell",
-            )
+                id="app-shell",
+                hidden=True,
+            ),
+            ),
+            auth_script,
         ),
     )
 
 
 app, rt = fast_app(hdrs=[])
+app.mount("/api/community", build_community_api(ROOT / "data" / "kairos_community.db"))
+
+
+async def firebase_popup_policy(request: Request, call_next: Any) -> Any:
+    response = await call_next(request)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    return response
+
+
+app.add_middleware(BaseHTTPMiddleware, dispatch=firebase_popup_policy)
 
 
 @rt
@@ -199,9 +232,29 @@ def alerts_page() -> Any:
     return layout(Div(P("ALERT SETTINGS", cls="eyebrow"), H1("Alert settings", cls="text-4xl font-bold tracking-tight"), Card(H2("Email notifications", cls="text-xl font-bold"), details, P("SMTP values are read from environment variables. Passwords are never displayed in this dashboard.", cls="text-sm text-muted-foreground mt-6"), cls="p-6 mt-8"), Card(H3("Supported configuration", cls="font-bold"), Ul(Li("One to three recipient addresses are supported."), Li("Separate recipients with commas or semicolons in ALERT_TO."), Li("SMTP_PASSWORD should be an app password where required by the provider."), cls="list-disc ml-5 space-y-2"), cls="p-6 mt-4")), "Alert settings")
 
 
+@rt("/community")
+def community_page() -> Any:
+    config, missing = firebase_web_config()
+    config_json = json.dumps(config or {})
+    return layout(Div(P("COMMUNITY", cls="eyebrow"), H1("Community", cls="text-4xl font-bold tracking-tight"), Div(id="community-root", cls="mt-8"), Script(f"""
+      const root=document.getElementById('community-root'), config={config_json};
+      let auth=null, token='';
+      const esc=s=>String(s??'').replace(/[&<>'\"]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}}[c]));
+      async function api(path, options={{}}) {{ const r=await fetch(path,{{...options,headers:{{'Content-Type':'application/json','Authorization':`Bearer ${{token}}`,...(options.headers||{{}})}}}}); const d=await r.json(); if(!r.ok) throw Error(d.error||d.detail||'Request failed'); return d; }}
+      async function render() {{ const qs=await api('/api/community/questions'); root.innerHTML=`<div class="flex justify-between items-center mb-5"><h2 class="text-xl font-bold">Questions</h2><button id="ask" class="btn btn-primary">Ask question</button></div><input id="search" class="input input-bordered w-full mb-5" placeholder="Search questions"><div id="list"></div>`; const draw=()=>{{const q=qs.filter(x=>!search.value||(`${{x.title}} ${{x.description}}`).toLowerCase().includes(search.value.toLowerCase()));list.innerHTML=q.length?q.map(x=>`<article class="card p-5 mb-3"><h3 class="font-bold">${{esc(x.title)}}</h3><p class="text-sm text-muted-foreground mt-2">${{esc(x.description)}}</p><div class="flex gap-3 mt-4"><button class="btn btn-sm" data-like="${{x.question_id}}">Likes ${{x.like_count}}</button><button class="btn btn-sm" data-reply="${{x.question_id}}">Reply</button><span class="text-sm text-muted-foreground">${{x.answer_count}} answers</span></div></article>`).join(''):'<p class="text-muted-foreground">No questions yet.</p>'; q.forEach(x=>{{}}); document.querySelectorAll('[data-like]').forEach(b=>b.onclick=async()=>{{await api(`/api/community/questions/${{b.dataset.like}}/like`,{{method:'POST'}});render()}}); document.querySelectorAll('[data-reply]').forEach(b=>b.onclick=()=>reply(b.dataset.reply)); search.oninput=draw; draw(); ask.onclick=()=>{{root.innerHTML=`<h2 class="text-xl font-bold mb-4">Ask a question</h2><input id="title" class="input input-bordered w-full mb-3" placeholder="Title"><textarea id="description" class="textarea textarea-bordered w-full mb-3" placeholder="Describe the machine or acoustic issue"></textarea><button id="post" class="btn btn-primary">Post question</button>`;post.onclick=async()=>{{try{{await api('/api/community/questions',{{method:'POST',body:JSON.stringify({{title:title.value,description:description.value}})}});render()}}catch(e){{alert(e.message)}}}}}}}}}}
+      async function reply(id) {{ const q=await api(`/api/community/questions/${{id}}`); root.innerHTML=`<button id="back" class="btn btn-ghost mb-4">Back</button><h2 class="text-2xl font-bold">${{esc(q.title)}}</h2><p class="mt-3">${{esc(q.description)}}</p><div class="mt-6"><textarea id="answer" class="textarea textarea-bordered w-full" placeholder="Write a reply"></textarea><button id="send" class="btn btn-primary mt-3">Post reply</button></div><div class="mt-8">${{(q.answers||[]).map(a=>`<div class="border-b border-border py-3">${{esc(a.answer_text)}}</div>`).join('')}}</div>`;back.onclick=render;send.onclick=async()=>{{try{{await api(`/api/community/questions/${{id}}/answers`,{{method:'POST',body:JSON.stringify({{answer_text:answer.value}})}});reply(id)}}catch(e){{alert(e.message)}}}}}}
+      async function start() {{ const ready=await new Promise(resolve=>{{const wait=()=>window.kairosAuthReady?window.kairosAuthReady.then(resolve):setTimeout(wait,25);wait()}}); if(!ready){{root.innerHTML='<p class="text-error">Authentication is required.</p>';return}} token=window.kairosIdToken; render(); }} start().catch(e=>root.innerHTML=`<p class="text-error">${{esc(e.message)}}</p>`);
+    """, type="module")), "Community")
+
+
 @rt("/partials/phone-live")
 def phone_live_partial() -> Any:
     return phone_live_panel()
+
+
+@rt("/favicon.ico")
+def favicon() -> Response:
+    return Response(status_code=204)
 
 
 if __name__ == "__main__":

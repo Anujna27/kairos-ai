@@ -244,14 +244,18 @@ FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_STORAGE_BUCKET=...
 FIREBASE_MESSAGING_SENDER_ID=...
 FIREBASE_APP_ID=...
-FIREBASE_ADMIN_CREDENTIALS_JSON={"type":"service_account", ...}
+# Recommended locally: use the downloaded service-account JSON file
+FIREBASE_ADMIN_CREDENTIALS_FILE=/absolute/path/to/firebase-adminsdk.json
+# Alternative for secret managers:
+# FIREBASE_ADMIN_CREDENTIALS_JSON={"type":"service_account", ...}
 ```
 
 The application reads these values from protected environment configuration
 only. Copy `.env.example` to a local, ignored `.env` file and populate it, or
 configure the same variables in the deployment environment. Never commit the
-JSON, private key, or passwords. The Community page shows a setup error and
-does not fall back to anonymous/session identities when configuration is
+service-account JSON, private key, or passwords. The Community API is mounted
+at `/api/community` and verifies the Firebase bearer token on every request;
+it does not fall back to anonymous/session identities when configuration is
 missing.
 
 Existing SQLite rows are preserved without migration. Questions created by the
