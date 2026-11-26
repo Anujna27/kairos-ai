@@ -130,7 +130,7 @@ def phone_live_panel() -> Any:
 
 
 def layout(content: Any, active: str = "Overview") -> Any:
-    links = [("Overview", "/", "home"), ("AI diagnostics", "/ai", "activity"), ("Training", "/training", "settings"), ("Phone monitoring", "/phone", "mic"), ("Live events", "/events", "list"), ("Alert settings", "/alerts", "bell")]
+    links = [("Overview", "/", "home"), ("AI diagnostics", "/ai", "activity"), ("Training", "/training", "settings"), ("Phone monitoring", "/phone", "mic"), ("Live events", "/events", "list"), ("Community", "/community", "users"), ("Alert settings", "/alerts", "bell")]
     return Html(
         Head(Title(f"KAIROS · {active}"), *Theme.blue.headers(), custom_css, Script(src="https://unpkg.com/htmx.org@2.0.4"), Script("""
             (()=>{const root=document.documentElement;const key='kairos-theme';const saved=localStorage.getItem(key);if(saved==='light')root.classList.remove('dark');if(saved==='dark')root.classList.add('dark');document.addEventListener('click',e=>{const b=e.target.closest('#theme-toggle');if(!b)return;const dark=root.classList.toggle('dark');localStorage.setItem(key,dark?'dark':'light');b.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');});})();
