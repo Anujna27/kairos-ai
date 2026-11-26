@@ -12,6 +12,7 @@ from fasthtml.common import *
 from monsterui.all import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from modules.alerts import EmailConfig, EventStore
 from modules.anomaly_detection import MODEL_PATH, model_status, train_from_directory
@@ -165,11 +166,13 @@ def layout(content: Any, active: str = "Overview") -> Any:
 app, rt = fast_app(hdrs=[])
 
 
-@app.middleware("http")
 async def firebase_popup_policy(request: Request, call_next: Any) -> Any:
     response = await call_next(request)
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
     return response
+
+
+app.add_middleware(BaseHTTPMiddleware, dispatch=firebase_popup_policy)
 
 
 @rt
