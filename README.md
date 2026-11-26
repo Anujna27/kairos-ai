@@ -42,16 +42,13 @@ The phone does not train or run the model locally.
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python -m streamlit run app.py
+python -m dashboard
 ```
 
-Upload WAV/FLAC (and MP3 where the local SoundFile installation supports it),
-select a machine, and choose **Analyze audio**. The Acoustic Analysis page
-shows the waveform, FFT spectrum, spectrogram, extracted features, and model
-diagnostic result. AI Diagnostics shows model status and can train from the
-healthy dataset. Machine Monitoring and Alerts & History provide the prototype
-fleet view and session history. Microphone recording needs a default input
-device and microphone permission.
+The primary dashboard is now FastHTML + MonsterUI at `http://localhost:5001`.
+It reads the same trained model and SQLite events as the monitoring services.
+The earlier Streamlit dashboard remains available with `streamlit run app.py`
+for legacy inspection, but new UI work should target `dashboard.py`.
 
 ## Anomaly detection module
 

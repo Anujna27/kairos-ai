@@ -12,3 +12,5 @@ plotly>=5.22
 pytest>=7.0
 fastapi>=0.115
 uvicorn[standard]>=0.30
+python-fasthtml>=0.8
+MonsterUI>=0.0.14
