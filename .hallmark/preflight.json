@@ -1,0 +1,20 @@
+{
+  "scanned": "2026-11-18",
+  "findings": {
+    "fonts": "Streamlit default UI with inline palette in app.py; architecture artifact introduces Host Grotesk + Atkinson Hyperlegible Mono for the Console direction.",
+    "palette": "Existing app.py palette is dark navy with cyan, green, amber and red; artifact preserves a dark instrument posture while introducing Console tokens.",
+    "motion": "No project motion system; the architecture sheet is static.",
+    "spacing": "No shared design-token file found; artifact defines an A3 print rhythm in architecture/tokens.css.",
+    "framework": "Python Streamlit prototype; output is a standalone HTML/PDF artifact under architecture/."
+  },
+  "preserve": [
+    "Existing module boundaries and README architecture statements.",
+    "Prototype caveats: no live IoT feed, no fault diagnosis, no performance claims.",
+    "Actual filenames and workflow paths from app.py and modules/."
+  ],
+  "introduce": [
+    "Console theme direction for a technical architecture sheet.",
+    "Map / Diagram composition in A3 landscape with high, mid and low abstraction levels.",
+    "Print-ready HTML and PDF plus a rendered QA image."
+  ]
+}

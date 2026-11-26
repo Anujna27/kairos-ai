@@ -1,151 +1,76 @@
-"""Audio preprocessing, visualization, and feature extraction for Kairos AI."""
+"""Acoustic calculations with standard-library fallbacks and lazy scientific imports."""
 
 from __future__ import annotations
 
-from typing import Any
-
-import librosa
-import numpy as np
-import plotly.graph_objects as go
-import soundfile as sf
+import cmath
+import math
+from typing import Any, Dict, Tuple
 
 
-def _validate_audio(audio: np.ndarray, sample_rate: int) -> tuple[np.ndarray, int]:
-    """Validate audio and return a finite float32 array and positive sample rate."""
-    if isinstance(sample_rate, bool) or not isinstance(sample_rate, (int, np.integer)) or sample_rate <= 0:
-        raise ValueError("sample_rate must be a positive integer")
-    if audio is None:
-        raise ValueError("audio cannot be None")
-    signal = np.asarray(audio)
-    if signal.size == 0:
-        raise ValueError("audio cannot be empty")
-    if signal.ndim not in (1, 2):
-        raise ValueError("audio must be a mono array or a 2D multichannel array")
-    if not np.issubdtype(signal.dtype, np.number):
-        raise TypeError("audio must contain numeric samples")
-    signal = signal.astype(np.float32, copy=False)
-    if not np.all(np.isfinite(signal)):
-        raise ValueError("audio contains NaN or infinite samples")
-    # SoundFile decodes multichannel data as (samples, channels); accept either
-    # orientation by treating the smaller dimension as the channel dimension.
-    if signal.ndim == 2 and min(signal.shape) <= 8:
-        if signal.shape[0] <= 8 and signal.shape[1] > 8:
-            signal = signal.T
-    if signal.ndim == 2 and signal.shape[1] > 8:
-        raise ValueError("audio has too many channels (maximum supported: 8)")
-    return signal, int(sample_rate)
+class ScientificDependencyError(RuntimeError):
+    """Raised when an optional NumPy/Librosa feature is blocked or unavailable."""
 
 
-def preprocess_audio(audio: np.ndarray, sample_rate: int) -> tuple[np.ndarray, int]:
-    """Convert audio to normalized mono float32 samples; preserve its sample rate."""
-    signal, rate = _validate_audio(audio, sample_rate)
-    if signal.ndim == 2:
-        signal = np.mean(signal, axis=1, dtype=np.float32)
-    peak = float(np.max(np.abs(signal)))
-    if peak > 0:
-        signal = signal / peak
-    return signal.astype(np.float32, copy=False), rate
+def _scientific_modules():
+    try:
+        import librosa
+        import numpy as np
+        return librosa, np
+    except ImportError as exc:
+        raise ScientificDependencyError("This feature needs NumPy and Librosa. Windows Application Control is blocking a NumPy compiled component, so this feature is temporarily unavailable.") from exc
 
 
-def generate_waveform(audio: np.ndarray, sample_rate: int) -> go.Figure:
-    """Create an interactive Plotly amplitude-versus-time waveform."""
-    signal, rate = preprocess_audio(audio, sample_rate)
-    times = np.arange(signal.size, dtype=np.float64) / rate
-    fig = go.Figure(go.Scatter(x=times, y=signal, mode="lines", name="Amplitude"))
-    fig.update_layout(title="Audio Waveform", xaxis_title="Time (seconds)", yaxis_title="Amplitude", template="plotly_white")
-    return fig
+def generate_waveform(audio: Any, sample_rate: int) -> Tuple[list[float], list[float]]:
+    """Return time and amplitude lists for a waveform chart."""
+    samples = audio.tolist() if hasattr(audio, "tolist") else list(audio)
+    return [index / sample_rate for index in range(len(samples))], [float(value) for value in samples]
 
 
-def perform_fft(audio: np.ndarray, sample_rate: int) -> dict[str, Any]:
-    """Return the one-sided frequency and magnitude spectrum of an audio signal."""
-    signal, rate = preprocess_audio(audio, sample_rate)
-    if signal.size < 2:
-        raise ValueError("at least two samples are required for FFT analysis")
-    # Windowing reduces spectral leakage. Scale by the window sum for amplitude.
-    window = np.hanning(signal.size)
-    spectrum = np.fft.rfft(signal * window)
-    frequencies = np.fft.rfftfreq(signal.size, d=1.0 / rate)
-    magnitudes = (2.0 * np.abs(spectrum) / max(float(window.sum()), 1e-12)).astype(np.float64)
-    magnitudes[0] *= 0.5
-    if signal.size % 2 == 0:
-        magnitudes[-1] *= 0.5
-    return {"frequencies": frequencies, "magnitudes": magnitudes}
+def calculate_fft(audio: Any, sample_rate: int) -> Tuple[list[float], list[float], float]:
+    """Calculate a pure-Python positive-frequency FFT for fallback use."""
+    samples = audio.tolist() if hasattr(audio, "tolist") else [float(value) for value in audio]
+    samples = samples[: min(len(samples), 8192)]
+    n = len(samples)
+    if not n:
+        return [], [], 0.0
+    windowed = [sample * (0.5 - 0.5 * math.cos(2 * math.pi * index / max(n - 1, 1))) for index, sample in enumerate(samples)]
+    bins = n // 2 + 1
+    magnitudes = [abs(sum(windowed[t] * cmath.exp(-2j * math.pi * k * t / n) for t in range(n))) / n for k in range(bins)]
+    frequencies = [k * sample_rate / n for k in range(bins)]
+    dominant = frequencies[magnitudes.index(max(magnitudes))] if magnitudes else 0.0
+    return frequencies, magnitudes, float(dominant)
 
 
-def get_dominant_frequency(audio: np.ndarray, sample_rate: int) -> float:
-    """Return the strongest non-DC FFT frequency in hertz (0 for silence)."""
-    spectrum = perform_fft(audio, sample_rate)
-    if spectrum["magnitudes"].size <= 1 or not np.any(spectrum["magnitudes"][1:]):
-        return 0.0
-    index = int(np.argmax(spectrum["magnitudes"][1:]) + 1)
-    return float(spectrum["frequencies"][index])
+def generate_spectrogram(audio: Any, sample_rate: int) -> Tuple[Any, Any, Any]:
+    """Generate a Librosa spectrogram; dependency errors remain feature-local."""
+    librosa, np = _scientific_modules()
+    samples = np.asarray(audio, dtype=np.float32)
+    n_fft = min(2048, max(256, 2 ** int(np.floor(np.log2(max(len(samples), 256))))))
+    hop = max(64, n_fft // 4)
+    spectrogram = np.abs(librosa.stft(samples, n_fft=n_fft, hop_length=hop))
+    db = librosa.amplitude_to_db(spectrogram + 1e-8, ref=np.max)
+    return db, librosa.frames_to_time(np.arange(db.shape[1]), sr=sample_rate, hop_length=hop), librosa.fft_frequencies(sr=sample_rate, n_fft=n_fft)
 
 
-def generate_spectrogram(audio: np.ndarray, sample_rate: int) -> go.Figure:
-    """Create an interactive dB-scaled spectrogram using Librosa."""
-    signal, rate = preprocess_audio(audio, sample_rate)
-    if signal.size < 2:
-        raise ValueError("at least two samples are required for a spectrogram")
-    n_fft = min(2048, max(32, 2 ** int(np.floor(np.log2(signal.size)))))
-    hop = max(1, n_fft // 4)
-    stft = librosa.stft(signal, n_fft=n_fft, hop_length=hop)
-    db = librosa.amplitude_to_db(np.abs(stft), ref=np.max)
-    times = librosa.frames_to_time(np.arange(db.shape[1]), sr=rate, hop_length=hop)
-    freqs = librosa.fft_frequencies(sr=rate, n_fft=n_fft)
-    fig = go.Figure(go.Heatmap(x=times, y=freqs, z=db, colorscale="Viridis", colorbar={"title": "dB"}, zmin=-80, zmax=0))
-    fig.update_layout(title="Audio Spectrogram", xaxis_title="Time (seconds)", yaxis_title="Frequency (Hz)", template="plotly_white")
-    return fig
+def extract_features(audio: Any, sample_rate: int) -> Dict[str, float]:
+    """Extract MFCC and spectral features; unavailable dependencies are explicit."""
+    librosa, np = _scientific_modules()
+    y = np.asarray(audio, dtype=np.float32)
+    rms = float(np.mean(librosa.feature.rms(y=y)))
+    centroid = float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sample_rate)))
+    bandwidth = float(np.mean(librosa.feature.spectral_bandwidth(y=y, sr=sample_rate)))
+    zcr = float(np.mean(librosa.feature.zero_crossing_rate(y)))
+    mfcc = librosa.feature.mfcc(y=y, sr=sample_rate, n_mfcc=13)
+    features = {f"mfcc_{i + 1}": float(np.mean(mfcc[i])) for i in range(mfcc.shape[0])}
+    features.update({"rms_energy": rms, "spectral_centroid_hz": centroid, "spectral_bandwidth_hz": bandwidth, "zero_crossing_rate": zcr})
+    return features
 
 
-def extract_mfcc(audio: np.ndarray, sample_rate: int, n_mfcc: int = 13) -> dict[str, Any]:
-    """Extract MFCCs and per-coefficient mean and standard deviation."""
-    signal, rate = preprocess_audio(audio, sample_rate)
-    if isinstance(n_mfcc, bool) or not isinstance(n_mfcc, int) or n_mfcc < 1:
-        raise ValueError("n_mfcc must be a positive integer")
-    n_fft = min(2048, max(32, 2 ** int(np.floor(np.log2(signal.size)))))
-    coeffs = librosa.feature.mfcc(y=signal, sr=rate, n_mfcc=n_mfcc, n_fft=n_fft)
-    means = np.mean(coeffs, axis=1)
-    stds = np.std(coeffs, axis=1)
-    return {"coefficients": coeffs, "mean": means, "std": stds}
-
-
-def extract_acoustic_features(audio: np.ndarray, sample_rate: int) -> dict[str, float]:
-    """Extract scalar time- and frequency-domain acoustic features."""
-    signal, rate = preprocess_audio(audio, sample_rate)
-    n_fft = min(2048, max(32, 2 ** int(np.floor(np.log2(signal.size)))))
-    hop = max(1, n_fft // 4)
-    rms = librosa.feature.rms(y=signal, frame_length=n_fft, hop_length=hop, center=True)[0]
-    zcr = librosa.feature.zero_crossing_rate(signal, frame_length=n_fft, hop_length=hop)[0]
-    centroid = librosa.feature.spectral_centroid(y=signal, sr=rate, n_fft=n_fft, hop_length=hop)[0]
-    bandwidth = librosa.feature.spectral_bandwidth(y=signal, sr=rate, n_fft=n_fft, hop_length=hop)[0]
-    rolloff = librosa.feature.spectral_rolloff(y=signal, sr=rate, n_fft=n_fft, hop_length=hop)[0]
-    flux_spec = np.abs(librosa.stft(signal, n_fft=n_fft, hop_length=hop))
-    normalized = flux_spec / np.maximum(np.sum(flux_spec, axis=0, keepdims=True), 1e-12)
-    flux = np.sqrt(np.sum(np.diff(normalized, axis=1) ** 2, axis=0)) if normalized.shape[1] > 1 else np.array([0.0])
-    stats = {"rms_energy": rms, "zero_crossing_rate": zcr, "spectral_centroid_hz": centroid,
-             "spectral_bandwidth_hz": bandwidth, "spectral_rolloff_hz": rolloff, "spectral_flux": flux}
-    return {name: float(np.mean(values)) for name, values in stats.items()}
-
-
-def process_audio(audio: np.ndarray, sample_rate: int) -> dict[str, Any]:
-    """Preprocess audio, extract ML-ready numeric features, and return figures separately."""
-    signal, rate = preprocess_audio(audio, sample_rate)
-    mfcc = extract_mfcc(signal, rate)
-    acoustic = extract_acoustic_features(signal, rate)
-    feature_vector = {**acoustic}
-    for index, value in enumerate(mfcc["mean"]):
-        feature_vector[f"mfcc_{index + 1}_mean"] = float(value)
-    for index, value in enumerate(mfcc["std"]):
-        feature_vector[f"mfcc_{index + 1}_std"] = float(value)
-    fft = perform_fft(signal, rate)
-    return {
-        "sample_rate": rate,
-        "audio": signal,
-        "features": feature_vector,
-        "feature_vector": np.asarray(list(feature_vector.values()), dtype=np.float64),
-        "dominant_frequency_hz": get_dominant_frequency(signal, rate),
-        "fft": fft,
-        "mfcc": mfcc,
-        "figures": {"waveform": generate_waveform(signal, rate), "spectrogram": generate_spectrogram(signal, rate)},
-    }
-
+def feature_vector(features: Dict[str, float]) -> Any:
+    """Create a stable NumPy vector only when model work needs it."""
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise ScientificDependencyError("AI feature vectors need NumPy, but Windows Application Control is blocking a NumPy component.") from exc
+    keys = [f"mfcc_{i}" for i in range(1, 14)] + ["rms_energy", "spectral_centroid_hz", "spectral_bandwidth_hz", "zero_crossing_rate"]
+    return np.asarray([features.get(key, 0.0) for key in keys], dtype=np.float32)

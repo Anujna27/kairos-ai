@@ -1,133 +1,60 @@
-"""Audio acquisition helpers for EchoSense.
-
-The public functions return mono, normalized ``float32`` samples and the
-original sample rate, ready for the signal-processing and anomaly modules.
-Audio is not resampled here so downstream frequency calculations remain
-correct for the source recording.
-"""
+"""Audio loading, validation, preprocessing, and optional microphone capture."""
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import BinaryIO
+import io
+from typing import Any, BinaryIO, Tuple
 
-import numpy as np
-
-
-AudioSource = str | Path | BinaryIO
+SUPPORTED_FORMATS = {"wav", "flac", "mp3", "ogg"}
 
 
-def preprocess_audio(audio: np.ndarray, *, normalize: bool = True) -> np.ndarray:
-    """Convert audio to mono float32 and optionally peak-normalize it.
-
-    Multichannel audio is averaged across channels. Silence remains silence;
-    non-finite samples are replaced with zero. Peak normalization preserves
-    relative waveform shape but removes absolute loudness information.
-    """
-    samples = np.asarray(audio)
-    if samples.size == 0:
-        raise ValueError("Audio is empty.")
-
-    # SoundFile returns (frames, channels); also support channel-first arrays.
-    if samples.ndim == 2:
-        if samples.shape[1] <= 8:
-            samples = samples.mean(axis=1)
-        elif samples.shape[0] <= 8:
-            samples = samples.mean(axis=0)
-        else:
-            raise ValueError("Audio must be mono or have a small number of channels.")
-    elif samples.ndim != 1:
-        raise ValueError("Audio must be a one-dimensional signal or a 2D channel array.")
-
-    samples = np.nan_to_num(samples.astype(np.float32, copy=False), copy=True)
-    if normalize:
-        peak = float(np.max(np.abs(samples)))
-        if peak > 0:
-            samples /= peak
-    return samples
-
-
-def load_audio(source: AudioSource, *, normalize: bool = True) -> tuple[np.ndarray, int]:
-    """Read a WAV/audio file or Streamlit UploadedFile.
-
-    Returns ``(audio, sample_rate)``. ``source`` may be a path or a binary
-    file-like object (including ``st.file_uploader`` output). Requires
-    ``soundfile``; unsupported/corrupt files raise a descriptive ValueError.
-    """
+def _soundfile():
     try:
         import soundfile as sf
+        return sf
     except ImportError as exc:
-        raise ImportError("Reading uploaded audio requires soundfile (pip install soundfile).") from exc
+        raise RuntimeError("Audio decoding is unavailable because SoundFile could not be imported.") from exc
 
+
+def load_audio(source: str | bytes | BinaryIO) -> Tuple[list[float], int]:
+    """Load an audio source and return mono samples as a Python list plus rate."""
+    sf = _soundfile()
     try:
-        if hasattr(source, "seek"):
-            source.seek(0)
-        samples, sample_rate = sf.read(source, dtype="float32", always_2d=False)
+        if isinstance(source, (bytes, bytearray)):
+            data, sample_rate = sf.read(io.BytesIO(source), always_2d=True)
+        else:
+            data, sample_rate = sf.read(source, always_2d=True)
     except Exception as exc:
-        raise ValueError(f"Could not read audio file: {exc}") from exc
+        raise ValueError("Could not decode this audio file. WAV and FLAC work reliably; MP3 support depends on local SoundFile/libsndfile support.") from exc
+    rows = data.tolist() if hasattr(data, "tolist") else list(data)
+    mono = [sum(float(value) for value in row) / len(row) if isinstance(row, list) else float(row) for row in rows]
+    return preprocess_audio(mono, int(sample_rate))
 
+
+def preprocess_audio(audio: Any, sample_rate: int) -> Tuple[list[float], int]:
+    """Validate, mono-convert, clean, and peak-normalize using built-ins."""
     if sample_rate <= 0:
-        raise ValueError("Audio file has an invalid sample rate.")
-    return preprocess_audio(samples, normalize=normalize), int(sample_rate)
+        raise ValueError("The audio sample rate is invalid.")
+    values = audio.tolist() if hasattr(audio, "tolist") else list(audio)
+    if values and isinstance(values[0], list):
+        values = [sum(float(value) for value in row) / len(row) for row in values]
+    samples = [0.0 if value != value else float(value) for value in values]
+    if len(samples) < 32 or not any(abs(value) > 1e-8 for value in samples):
+        raise ValueError("The recording is empty or too quiet to analyze.")
+    peak = max(abs(value) for value in samples)
+    if peak > 1.0:
+        samples = [value / peak for value in samples]
+    return samples, int(sample_rate)
 
 
-def record_audio(
-    duration: float = 5.0,
-    sample_rate: int = 22_050,
-    *,
-    normalize: bool = True,
-    device: int | str | None = None,
-) -> tuple[np.ndarray, int]:
-    """Record mono audio from the default (or selected) microphone.
-
-    Requires ``sounddevice``. Microphone access is requested only when this
-    function is called, so importing this module works without audio hardware.
-    """
-    if duration <= 0:
-        raise ValueError("Recording duration must be greater than zero.")
-    if sample_rate <= 0:
-        raise ValueError("Sample rate must be greater than zero.")
+def record_audio(duration: float = 5.0, sample_rate: int = 16_000) -> Tuple[list[float], int]:
+    """Record from the default laptop microphone using sounddevice."""
+    if duration <= 0 or sample_rate <= 0:
+        raise ValueError("Duration and sample rate must be positive.")
     try:
         import sounddevice as sd
-    except ImportError as exc:
-        raise ImportError("Microphone recording requires sounddevice (pip install sounddevice).") from exc
-
-    try:
-        frames = int(round(duration * sample_rate))
-        recording = sd.rec(
-            frames,
-            samplerate=sample_rate,
-            channels=1,
-            dtype="float32",
-            device=device,
-        )
+        recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype="float32")
         sd.wait()
     except Exception as exc:
-        raise RuntimeError(
-            "Microphone recording failed. Check that a microphone is connected, "
-            "available to the operating system, and not in use by another app."
-        ) from exc
-
-    return preprocess_audio(recording, normalize=normalize), sample_rate
-
-
-def save_wav(
-    path: str | Path,
-    audio: np.ndarray,
-    sample_rate: int,
-) -> Path:
-    """Save a mono or multichannel NumPy signal as a WAV file."""
-    if sample_rate <= 0:
-        raise ValueError("Sample rate must be greater than zero.")
-    try:
-        import soundfile as sf
-    except ImportError as exc:
-        raise ImportError("Saving WAV files requires soundfile (pip install soundfile).") from exc
-
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    sf.write(target, np.asarray(audio), sample_rate, format="WAV")
-    return target
-
-
-__all__ = ["load_audio", "preprocess_audio", "record_audio", "save_wav"]
+        raise RuntimeError("Microphone recording failed. Check that a default input device is connected and Windows has microphone permission enabled.") from exc
+    return preprocess_audio(recording[:, 0], sample_rate)

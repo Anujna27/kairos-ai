@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KAIROS Phone Monitor</title>
+  <style>
+    body{font-family:system-ui,sans-serif;background:#07111f;color:#e8f1f7;max-width:720px;margin:auto;padding:24px}
+    button,input{font:inherit;padding:12px;border-radius:8px;border:1px solid #345;background:#102338;color:inherit;margin:4px 0}
+    button{cursor:pointer;background:#176b78}.stop{background:#8e3145}.card{background:#0d1b2d;border:1px solid #20354d;border-radius:12px;padding:16px;margin:12px 0}
+    #status{font-weight:700}.normal{color:#48d597}.anomaly{color:#ff647c}canvas{width:100%;height:180px;background:#081727;border-radius:8px}
+  </style>
+</head>
+<body>
+  <h1>KAIROS Phone Monitor</h1>
+  <div class="card"><label>Machine ID <input id="machine" value="PHONE-01"></label><br>
+    <button id="start">Start monitoring</button><button id="stop" class="stop" disabled>Stop monitoring</button>
+    <p id="status">Disconnected</p></div>
+  <div class="card"><canvas id="wave" width="700" height="180"></canvas><div id="metrics">No result yet.</div></div>
+  <script>
+    let ws, audioContext, source, processor, stream, lastResult=null;
+    const startButton=document.getElementById('start'), stopButton=document.getElementById('stop'), machineInput=document.getElementById('machine');
+    const status = document.getElementById('status'), metrics = document.getElementById('metrics');
+    const canvas = document.getElementById('wave'), ctx = canvas.getContext('2d');
+    function draw(samples){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#43d9e8';ctx.beginPath();samples.forEach((v,i)=>{let x=i*canvas.width/(samples.length-1),y=canvas.height/2-v*canvas.height*.45;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}
+    function pcm16(input){let out=new ArrayBuffer(input.length*2),view=new DataView(out);for(let i=0;i<input.length;i++){let v=Math.max(-1,Math.min(1,input[i]));view.setInt16(i*2,v<0?v*32768:v*32767,true)}return out}
+    startButton.onclick=async()=>{try{if(!window.isSecureContext&&!['localhost','127.0.0.1'].includes(location.hostname)){throw new Error('Microphone access requires HTTPS. Open this page through an HTTPS tunnel such as ngrok, not the laptop IP over HTTP.')}if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){throw new Error('This browser does not expose microphone access. Use current Chrome on Android or Safari on iOS over HTTPS.')}lastResult=null;stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});audioContext=new AudioContext();source=audioContext.createMediaStreamSource(stream);processor=audioContext.createScriptProcessor(4096,1,1);let protocol=location.protocol==='https:'?'wss://':'ws://';ws=new WebSocket(`${protocol}${location.host}/ws/audio`);ws.binaryType='arraybuffer';ws.onopen=()=>{ws.send(JSON.stringify({sample_rate:audioContext.sampleRate,channels:1,machine_id:machineInput.value}));status.textContent='Connecting…'};ws.onerror=()=>{status.textContent='WebSocket connection failed';metrics.textContent='Check that the FastAPI server is running and that this page came from the same HTTPS tunnel.'};ws.onclose=()=>{if(!stopButton.disabled)status.textContent='WebSocket disconnected'};ws.onmessage=e=>{let m=JSON.parse(e.data);if(m.type==='ready')status.textContent='Connected · streaming';if(m.type==='buffering')status.textContent='Connected · buffering audio';if(m.type==='error'){status.textContent='Audio processing error';metrics.textContent=m.message||'The server rejected an audio chunk.'}if(m.type==='result'){lastResult=m;status.textContent='Connected · '+m.status;status.className=m.is_anomaly?'anomaly':'normal';metrics.textContent=`Result: ${m.status} · RMS ${m.rms.toFixed(4)} · Peak ${m.peak.toFixed(4)} · Dominant frequency ${m.dominant_frequency.toFixed(1)} Hz · Anomaly score ${m.anomaly_score.toFixed(4)}`}};processor.onaudioprocess=e=>{if(ws&&ws.readyState===1){let data=e.inputBuffer.getChannelData(0);draw(data);ws.send(pcm16(data))}};source.connect(processor);processor.connect(audioContext.destination);startButton.disabled=true;stopButton.disabled=false}catch(e){status.textContent='Microphone error: '+e.message;metrics.textContent='Use HTTPS and grant microphone permission, then reload the page.'}};
+    stopButton.onclick=async()=>{if(processor){processor.onaudioprocess=null;processor.disconnect();processor=null}if(source){source.disconnect();source=null}if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}if(ws){ws.onclose=null;ws.close(1000,'user stopped monitoring');ws=null}if(audioContext){await audioContext.close();audioContext=null}let finalLabel=lastResult?lastResult.status:'NO RESULT';status.textContent='Stopped · final result: '+finalLabel;status.className=lastResult&&lastResult.is_anomaly?'anomaly':lastResult?'normal':'';if(lastResult){metrics.textContent=`Final result: ${lastResult.status} · RMS ${lastResult.rms.toFixed(4)} · Peak ${lastResult.peak.toFixed(4)} · Dominant frequency ${lastResult.dominant_frequency.toFixed(1)} Hz · Anomaly score ${lastResult.anomaly_score.toFixed(4)}`}else{metrics.textContent='Monitoring stopped before the first model result was available.'}startButton.disabled=false;stopButton.disabled=true};
+  </script>
+</body>
+</html>

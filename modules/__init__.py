@@ -1,1 +1,1 @@
-"""EchoSense prototype modules."""
+"""KAIROS-AI application and anomaly-detection modules."""
